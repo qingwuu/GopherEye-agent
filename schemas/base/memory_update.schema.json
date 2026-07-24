@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/base/memory_update.schema.json",
+  "title": "Assistant Memory Update",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "summary",
+    "evidence_present",
+    "evidence_missing",
+    "recommended_next_image",
+    "allowed_follow_up_questions",
+    "open_questions"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "user_goal": {
+      "type": ["string", "null"]
+    },
+    "current_diagnosis": {
+      "type": ["string", "null"]
+    },
+    "known_image_updates": {
+      "type": "array",
+      "items": {
+        "$ref": "known_image_update.schema.json"
+      }
+    },
+    "visual_intakes": {
+      "type": "array",
+      "items": {
+        "$ref": "../visual_intake.schema.json"
+      }
+    },
+    "evidence_present": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_next_image": {
+      "type": ["string", "null"]
+    },
+    "allowed_follow_up_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

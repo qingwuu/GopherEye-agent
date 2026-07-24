@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/envelopes/assistant_envelope.schema.json",
+  "title": "Assistant Envelope",
+  "description": "Thin top-level wrapper for one assistant turn. Role profiles decide which payload fields and base schemas are required.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assistant_message", "memory_update"],
+  "properties": {
+    "assistant_message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_trace": {
+      "anyOf": [
+        {
+          "$ref": "../base/agent_trace.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "memory_update": {
+      "$ref": "../base/memory_update.schema.json"
+    }
+  }
+}

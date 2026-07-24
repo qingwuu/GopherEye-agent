@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/base/known_image_update.schema.json",
+  "title": "Known Image Update",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image_order", "side_label", "quality_overall"],
+  "properties": {
+    "image_order": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "side_label": {
+      "type": ["string", "null"],
+      "enum": ["adaxial", "abaxial", "mixed", "uncertain", "not_leaf", null]
+    },
+    "quality_overall": {
+      "type": ["string", "null"],
+      "enum": ["good", "usable_with_caution", "unusable", null]
+    }
+  }
+}

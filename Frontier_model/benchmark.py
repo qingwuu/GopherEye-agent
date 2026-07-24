@@ -94,6 +94,7 @@ def run_benchmark(
                     "parsed_json": bool(result and result.get("parsed_json")),
                     "envelope_valid": bool(result and result.get("envelope_valid")),
                     "envelope_schema": result.get("envelope_schema") if result else None,
+                    "envelope_role_profile": result.get("envelope_role_profile") if result else None,
                     "envelope_fallback_used": bool(result and result.get("envelope_fallback_used")),
                     "envelope_validation_errors": result.get("envelope_validation_errors") if result else None,
                     "assistant_message": result.get("assistant_message") if result else None,

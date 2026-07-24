@@ -490,6 +490,7 @@ def run_frontier_turn(
         "parsed_json": envelope["parsed_json"],
         "envelope_valid": envelope["envelope_valid"],
         "envelope_schema": envelope["schema_profile"],
+        "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
         "envelope_attempts": [
@@ -522,6 +523,7 @@ def run_frontier_turn(
         "parsed_json": envelope["parsed_json"],
         "envelope_valid": envelope["envelope_valid"],
         "envelope_schema": envelope["schema_profile"],
+        "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
         "usage": model_response.usage,

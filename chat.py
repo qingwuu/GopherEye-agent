@@ -136,38 +136,59 @@ PROTECTED_MODEL_MEMORY_KEYS = {
     "created_at",
     "updated_at",
 }
+ASSISTANT_ENVELOPE_SCHEMA_NAME = "schemas/envelopes/assistant_envelope.schema.json"
+BASE_KNOWN_IMAGE_UPDATE_SCHEMA_NAME = "schemas/base/known_image_update.schema.json"
+BASE_VISUAL_INTAKE_SCHEMA_NAME = "schemas/visual_intake.schema.json"
 ENVELOPE_SCHEMA_PROFILES: Dict[str, Dict[str, Any]] = {
     "chat": {
-        "schema_name": "schemas/envelopes/chat_envelope.schema.json",
+        "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
+        "role_profile": "chat",
         "requires_agent_trace": False,
         "requires_visual_memory": False,
+        "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
     "frontier_visual_intake_or_diagnosis": {
-        "schema_name": "schemas/envelopes/frontier_visual_diagnosis_envelope.schema.json",
+        "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
+        "role_profile": "frontier_visual_intake_or_diagnosis",
         "requires_agent_trace": True,
         "requires_visual_memory": True,
+        "requires_image_ordered_visual_intakes": True,
+        "payload_schemas": [
+            "schemas/base/memory_update.schema.json",
+            BASE_VISUAL_INTAKE_SCHEMA_NAME,
+        ],
     },
     "frontier_grape_leaf_chat": {
-        "schema_name": "schemas/envelopes/frontier_chat_envelope.schema.json",
+        "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
+        "role_profile": "frontier_grape_leaf_chat",
         "requires_agent_trace": True,
         "requires_visual_memory": False,
+        "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
     "frontier_data_management": {
-        "schema_name": "schemas/envelopes/frontier_data_management_envelope.schema.json",
+        "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
+        "role_profile": "frontier_data_management",
         "requires_agent_trace": True,
         "requires_visual_memory": False,
+        "payload_schemas": ["schemas/base/memory_update.schema.json"],
+        "forbidden_actions": ["write_wiki", "write_ground_truth"],
     },
     "frontier_knowledge_management": {
-        "schema_name": "schemas/envelopes/frontier_chat_envelope.schema.json",
+        "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
+        "role_profile": "frontier_knowledge_management",
         "requires_agent_trace": True,
         "requires_visual_memory": False,
+        "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
     "frontier_general_project_chat": {
-        "schema_name": "schemas/envelopes/frontier_chat_envelope.schema.json",
+        "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
+        "role_profile": "frontier_general_project_chat",
         "requires_agent_trace": True,
         "requires_visual_memory": False,
+        "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
 }
+_SCHEMA_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def envelope_schema_profile(role: str) -> Dict[str, Any]:
@@ -190,6 +211,81 @@ def find_protected_memory_keys(value: Any, *, path: str = "memory_update") -> Li
         for idx, child in enumerate(value):
             found.extend(find_protected_memory_keys(child, path=f"{path}[{idx}]"))
     return found
+
+
+def load_schema(schema_name: str) -> Dict[str, Any]:
+    schema = _SCHEMA_CACHE.get(schema_name)
+    if schema is not None:
+        return schema
+    schema_path = ROOT_DIR / schema_name
+    schema = json.loads(schema_path.read_text(encoding="utf-8", errors="replace"))
+    _SCHEMA_CACHE[schema_name] = schema
+    return schema
+
+
+def format_jsonschema_path(path: Sequence[Any]) -> str:
+    if not path:
+        return ""
+    text = ""
+    for part in path:
+        if isinstance(part, int):
+            text += f"[{part}]"
+        else:
+            text += f".{part}" if text else str(part)
+    return text
+
+
+def validate_payload_schema(value: Any, schema_name: str, *, label: str) -> List[str]:
+    try:
+        import jsonschema
+    except Exception:
+        return []
+
+    schema = load_schema(schema_name)
+    validator = jsonschema.Draft202012Validator(schema)
+    errors = []
+    for error in sorted(validator.iter_errors(value), key=lambda item: list(item.path)):
+        suffix = format_jsonschema_path(list(error.path))
+        location = f"{label}.{suffix}" if suffix else label
+        errors.append(f"{location} does not satisfy {schema_name}: {error.message}")
+    return errors
+
+
+def validate_base_payloads(memory_update: Dict[str, Any], profile: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+
+    known_updates = memory_update.get("known_image_updates")
+    if isinstance(known_updates, list):
+        for idx, item in enumerate(known_updates):
+            errors.extend(
+                validate_payload_schema(
+                    item,
+                    BASE_KNOWN_IMAGE_UPDATE_SCHEMA_NAME,
+                    label=f"memory_update.known_image_updates[{idx}]",
+                )
+            )
+
+    visual_intakes = memory_update.get("visual_intakes")
+    if isinstance(visual_intakes, list):
+        for idx, item in enumerate(visual_intakes):
+            if not isinstance(item, dict):
+                errors.append(f"memory_update.visual_intakes[{idx}] must be an object.")
+                continue
+            if profile.get("requires_image_ordered_visual_intakes"):
+                image_order = item.get("image_order")
+                if not isinstance(image_order, int) or image_order < 1:
+                    errors.append(
+                        f"memory_update.visual_intakes[{idx}].image_order must be an integer >= 1."
+                    )
+            errors.extend(
+                validate_payload_schema(
+                    item,
+                    BASE_VISUAL_INTAKE_SCHEMA_NAME,
+                    label=f"memory_update.visual_intakes[{idx}]",
+                )
+            )
+
+    return errors
 
 
 def validate_assistant_envelope(
@@ -258,6 +354,8 @@ def validate_assistant_envelope(
         preview = ", ".join(protected_keys[:6])
         errors.append(f"memory_update must not include code-owned ID/timestamp fields: {preview}.")
 
+    errors.extend(validate_base_payloads(memory_update, profile))
+
     return errors
 
 
@@ -277,6 +375,12 @@ Return ONLY corrected JSON. Do not include markdown fences or explanation.
 
 Required schema profile:
 {profile['schema_name']}
+
+Role profile:
+{profile.get('role_profile', role)}
+
+Payload schemas for this role:
+{json.dumps(profile.get("payload_schemas", []), ensure_ascii=False, indent=2)}
 
 Expected task_type:
 {expected_task_text}
@@ -397,6 +501,7 @@ def resolve_assistant_envelope(
             "validation_errors": [],
             "attempts": attempts,
             "schema_profile": envelope_schema_profile(role)["schema_name"],
+            "role_profile": envelope_schema_profile(role).get("role_profile", role),
         }
 
     return {
@@ -410,6 +515,7 @@ def resolve_assistant_envelope(
         "validation_errors": final_errors,
         "attempts": attempts,
         "schema_profile": envelope_schema_profile(role)["schema_name"],
+        "role_profile": envelope_schema_profile(role).get("role_profile", role),
     }
 
 
@@ -1278,6 +1384,7 @@ def run_chat_turn(
         "parsed_json": envelope["parsed_json"],
         "envelope_valid": envelope["envelope_valid"],
         "envelope_schema": envelope["schema_profile"],
+        "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
         "envelope_attempts": [
@@ -1302,6 +1409,7 @@ def run_chat_turn(
         "parsed_json": envelope["parsed_json"],
         "envelope_valid": envelope["envelope_valid"],
         "envelope_schema": envelope["schema_profile"],
+        "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
     }

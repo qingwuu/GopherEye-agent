@@ -13,6 +13,10 @@
     "intake_summary"
   ],
   "properties": {
+    "image_order": {
+      "type": "integer",
+      "minimum": 1
+    },
     "is_leaf_image": {
       "type": "boolean"
     },

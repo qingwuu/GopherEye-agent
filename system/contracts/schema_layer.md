@@ -30,10 +30,11 @@ easier debugging
 ```text
 schemas/visual_intake.schema.json
 schemas/diagnosis_output.schema.json
-schemas/envelopes/chat_envelope.schema.json
-schemas/envelopes/frontier_visual_diagnosis_envelope.schema.json
-schemas/envelopes/frontier_data_management_envelope.schema.json
-schemas/envelopes/frontier_chat_envelope.schema.json
+schemas/envelopes/assistant_envelope.schema.json
+schemas/base/agent_trace.schema.json
+schemas/base/known_image_update.schema.json
+schemas/base/memory_update.schema.json
+schemas/role_profiles/assistant_role_profiles.json
 schemas/wiki_update_proposal.schema.json
 schemas/wiki_frontmatter.schema.json
 schemas/flow_run.schema.json
@@ -51,21 +52,55 @@ memory_update
   Structured session memory consumed by app code.
 ```
 
-The top-level envelope is shared, but schemas are role-specific:
+The current runtime uses one thin top-level envelope:
 
 ```text
-chat_envelope
-  Basic chat response and memory update.
-
-frontier_visual_diagnosis_envelope
-  Frontier visual diagnosis response, agent trace, and visual memory fields.
-
-frontier_data_management_envelope
-  Frontier data-management response and memory update.
-
-frontier_chat_envelope
-  Frontier grape-leaf chat, knowledge-management, and general project chat.
+assistant_envelope
+  assistant_message
+  optional agent_trace
+  memory_update
 ```
+
+Role profiles decide which payload fields and base schemas are required:
+
+```text
+chat
+  assistant_envelope + memory_update
+
+frontier_visual_intake_or_diagnosis
+  assistant_envelope + agent_trace + memory_update
+  visual_intakes must satisfy schemas/visual_intake.schema.json
+  visual_intakes must use image_order, not image_id or image_path
+
+frontier_data_management
+  assistant_envelope + agent_trace + memory_update
+  app code forbids direct wiki or ground-truth writes
+
+frontier_grape_leaf_chat / frontier_knowledge_management / frontier_general_project_chat
+  assistant_envelope + agent_trace + memory_update
+```
+
+The older role-specific envelope schema files have been removed. Role-specific
+requirements now live in `schemas/role_profiles/assistant_role_profiles.json`
+and runtime validation code.
+
+## Thin Envelope, Strong Payloads
+
+The envelope should stay thin. Domain detail belongs in base schemas:
+
+```text
+schemas/visual_intake.schema.json
+  visual observation payload used inside memory_update.visual_intakes.
+
+schemas/diagnosis_output.schema.json
+  diagnosis result contract for diagnosis-specific outputs and future exports.
+
+schemas/data_agent/*.schema.json
+  deterministic data pipeline records, human review, and reviewed dataset index.
+```
+
+This prevents the assistant envelope from becoming a duplicate diagnosis schema.
+The role profile decides which base schemas apply to the current task.
 
 ## App Rule
 

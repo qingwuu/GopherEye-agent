@@ -139,7 +139,7 @@ user message / image
 -> vision agent if images are attached
 -> retrieval agent over wiki or system pages
 -> diagnosis/chat/data agent
--> schema-shaped JSON response
+-> thin assistant envelope JSON response
 -> session memory update
 -> saved session and benchmark outputs
 ```
@@ -147,6 +147,17 @@ user message / image
 The first version uses a deterministic router plus frontier model calls for the
 semantic work. This keeps the flow inspectable and cheap while preserving the
 multi-agent architecture.
+
+The runtime now uses one assistant envelope schema for all roles:
+
+```text
+schemas/envelopes/assistant_envelope.schema.json
+```
+
+Role profiles decide which payload constraints apply. For example, visual
+diagnosis requires visual memory fields and validates `visual_intakes` against
+`schemas/visual_intake.schema.json`; data-management turns use the same
+envelope but do not receive write permission to wiki or ground-truth data.
 
 For visual diagnosis, the pipeline prefers core botanical procedure pages from
 `wiki/`, such as:
