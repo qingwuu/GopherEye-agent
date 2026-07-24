@@ -2,15 +2,18 @@
 title: Frontier Agent System
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-24
 sources: []
 ---
 
 # Frontier Agent System
 
-The frontier agent system is the app-facing evolution of the root-level wiki app.
-It keeps the curated wiki, schemas, prompts, and session memory, but makes the
-model backend interchangeable.
+The frontier agent system is the provider-switchable app layer for GopherEye.
+It routes requests, selects context, calls the configured model backend, parses
+outputs, and stores session state.
+
+Botanical diagnosis procedure does not live in this system document. It lives
+in `wiki/`.
 
 ## Purpose
 
@@ -18,7 +21,7 @@ model backend interchangeable.
 same GopherEye app behavior
 -> OpenAI / Claude / Kimi / local Qwen can be swapped by config
 -> outputs can be compared on the same images and questions
--> failures become data for future prompts, evals, and fine-tuning
+-> failures become data for future prompts, evals, and review workflows
 ```
 
 The implementation entry point is:
@@ -35,24 +38,43 @@ router
   management, data management, or general project chat.
 
 vision_agent
-  Inspects attached image pixels, checks whether the image is a leaf, assesses
-  image quality, estimates leaf side, and extracts visible symptoms.
+  Uses attached image pixels to produce visual observations. For botanical
+  diagnosis behavior, it must rely on selected wiki procedure pages.
 
 retrieval_agent
-  Selects relevant `wiki/` pages for the current request.
+  Selects context from the correct knowledge boundary:
+    visual/grape diagnosis -> wiki/
+    model/data/system questions -> system/
 
 diagnosis_agent
   Produces conservative diagnosis output from image evidence, session memory,
-  selected wiki pages, and schemas.
+  and selected wiki botanical procedure pages.
 
 data_agent
-  Explains and records data collection, data ingestion, label review, model
-  output auditing, and evaluation needs.
+  Explains data collection, ingestion, label review, model output auditing, and
+  evaluation using system pages. It should not write unreviewed model claims
+  into wiki.
 
 chat_agent
-  Handles follow-up questions from the current diagnosis state and selected
-  wiki pages.
+  Handles follow-up questions using the current diagnosis state and selected
+  context pages.
 ```
+
+## Botanical Procedure Boundary
+
+The frontier prompt should not hard-code detailed plant diagnostic procedure.
+Instead, visual diagnosis turns should read selected wiki pages such as:
+
+```text
+wiki/procedures/whole_diagnosis_process.md
+wiki/procedures/visual_observation_sequence.md
+wiki/procedures/symptom_localization_procedure.md
+wiki/workflows/evidence_sufficiency.md
+wiki/workflows/front_back_leaf_process.md
+```
+
+Code may require these page paths as core context, but the botanical reasoning
+steps should remain editable in wiki.
 
 ## Provider Switching
 
@@ -64,7 +86,7 @@ agent pipeline
 -> OpenAI Responses / Anthropic Messages / OpenAI-compatible Kimi / local Qwen
 ```
 
-The app should not rewrite diagnosis logic when a model changes. It should
+The app should not rewrite diagnosis procedure when a model changes. It should
 change only the selected model profile.
 
 ## Evaluation Targets
@@ -92,7 +114,7 @@ The system should store:
 raw uploaded image
 image metadata
 model profile and model output
-selected wiki pages
+selected context pages
 parsed memory update
 human expert correction
 final accepted label
@@ -110,13 +132,14 @@ evaluation system for future one-shot, few-shot, and fine-tuning work.
 implemented:
   provider registry
   deterministic router
-  reusable wiki retrieval
+  wiki/system context retrieval
   OpenAI / Claude / Kimi / local Qwen adapter structure
+  JSON envelope validation, one retry, and fallback formatting
   benchmark runner
   session storage
+  deterministic Data Agent CLI sidecar for capture/review/indexing
 
 not yet implemented:
-  strict JSON Schema validation in the frontier runner
   human review UI
   persistent database
   cost dashboard
@@ -124,6 +147,7 @@ not yet implemented:
   production authentication and privacy controls
 ```
 
-See [Evidence Sufficiency](../../wiki/workflows/evidence_sufficiency.md),
-[Whole Diagnosis Process](../../wiki/procedures/whole_diagnosis_process.md), and
+See [Agent Context Reading Policy](context_reading_policy.md),
+[Evidence Sufficiency](../../wiki/workflows/evidence_sufficiency.md),
+[Whole Grape Leaf Diagnosis Process](../../wiki/procedures/whole_diagnosis_process.md), and
 [Model Choice](../models/model_choice.md).

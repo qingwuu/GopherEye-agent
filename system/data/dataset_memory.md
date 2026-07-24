@@ -63,3 +63,20 @@ The model should not rely only on generated text. It should read structured
 fields such as severity trend, side coverage, disease history, and evidence
 sufficiency.
 
+## Runtime Data Agent
+
+The first runtime data layer lives outside the model call:
+
+```text
+existing diagnosis/chat session
+-> tools/data_agent.py capture-turn
+-> machine_generated / unreviewed model_label
+-> human_review.submitted.json
+-> reviewed_dataset_index.jsonl
+```
+
+The Data Agent records insufficient-evidence cases too. These cases are useful
+for review queues and data collection planning, but they are not ground-truth
+disease labels until human review accepts or corrects them.
+
+See [Data Agent Workflow](data_agent_workflow.md).
