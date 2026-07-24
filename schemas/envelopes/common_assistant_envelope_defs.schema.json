@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/envelopes/common_assistant_envelope_defs.schema.json",
+  "title": "Common Assistant Envelope Definitions",
+  "$defs": {
+    "agent_trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_type", "selected_agent_path", "needs_follow_up"],
+      "properties": {
+        "task_type": {
+          "type": "string"
+        },
+        "selected_agent_path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "needs_follow_up": {
+          "type": "boolean"
+        }
+      }
+    },
+    "known_image_update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image_order", "side_label", "quality_overall"],
+      "properties": {
+        "image_order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "side_label": {
+          "type": ["string", "null"],
+          "enum": ["adaxial", "abaxial", "mixed", "uncertain", "not_leaf", null]
+        },
+        "quality_overall": {
+          "type": ["string", "null"],
+          "enum": ["good", "usable_with_caution", "unusable", null]
+        }
+      }
+    },
+    "visual_intake_update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image_order",
+        "is_leaf_image",
+        "image_quality",
+        "side_assessment",
+        "visible_symptoms",
+        "visible_structures",
+        "symptom_locations",
+        "candidate_diseases",
+        "intake_summary"
+      ],
+      "properties": {
+        "image_order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "is_leaf_image": {
+          "type": "boolean"
+        },
+        "image_quality": {
+          "type": "object"
+        },
+        "side_assessment": {
+          "type": "object"
+        },
+        "visible_symptoms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "visible_structures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "symptom_locations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "candidate_diseases": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "intake_summary": {
+          "type": "string"
+        }
+      }
+    },
+    "memory_update": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "summary",
+        "evidence_present",
+        "evidence_missing",
+        "recommended_next_image",
+        "allowed_follow_up_questions",
+        "open_questions"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "user_goal": {
+          "type": ["string", "null"]
+        },
+        "current_diagnosis": {
+          "type": ["string", "null"]
+        },
+        "known_image_updates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/known_image_update"
+          }
+        },
+        "visual_intakes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/visual_intake_update"
+          }
+        },
+        "evidence_present": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_next_image": {
+          "type": ["string", "null"]
+        },
+        "allowed_follow_up_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

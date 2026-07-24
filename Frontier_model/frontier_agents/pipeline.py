@@ -15,6 +15,28 @@ REPO_ROOT = FRONTIER_DIR.parent
 APP_DIR = REPO_ROOT
 DEFAULT_SYSTEM_DIR = REPO_ROOT / "system"
 DEFAULT_SYSTEM_CATALOG_DIR = FRONTIER_DIR / "catalog" / "system"
+CORE_WIKI_CONTEXT_BY_TASK = {
+    "visual_intake_or_diagnosis": [
+        "procedures/whole_diagnosis_process.md",
+        "procedures/visual_observation_sequence.md",
+        "procedures/symptom_localization_procedure.md",
+        "workflows/evidence_sufficiency.md",
+        "workflows/front_back_leaf_process.md",
+    ],
+    "grape_leaf_chat": [
+        "procedures/whole_diagnosis_process.md",
+        "procedures/visual_observation_sequence.md",
+        "workflows/evidence_sufficiency.md",
+    ],
+}
+CORE_SYSTEM_CONTEXT_BY_TASK = {
+    "data_management": [
+        "data/data_agent_workflow.md",
+        "data/dataset_memory.md",
+        "agents/frontier_agent_system.md",
+        "contracts/schema_layer.md",
+    ],
+}
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -125,6 +147,14 @@ def context_for_route(
     }
 
 
+def core_context_paths_for_route(route: Dict[str, Any], context_label: str) -> List[str]:
+    if context_label == "wiki":
+        return list(CORE_WIKI_CONTEXT_BY_TASK.get(route["task_type"], []))
+    if context_label == "system":
+        return list(CORE_SYSTEM_CONTEXT_BY_TASK.get(route["task_type"], []))
+    return []
+
+
 def select_pages_for_backend(
     *,
     query: str,
@@ -134,14 +164,21 @@ def select_pages_for_backend(
     max_page_chars: int,
     wiki_dir: Path,
     catalog_dir: Path,
+    core_paths: Sequence[str] = (),
 ) -> List[Dict[str, Any]]:
     catalog = load_or_build_catalog(wiki_dir=wiki_dir, catalog_dir=catalog_dir)
+    ids_by_path = {page["path"]: page["id"] for page in catalog.get("pages", [])}
+    core_ids = []
+    for path in core_paths:
+        page_id = ids_by_path.get(path)
+        if page_id and page_id not in core_ids:
+            core_ids.append(page_id)
 
     if selection_mode == "none":
         return []
-    if selection_mode == "full":
+    elif selection_mode == "full":
         return read_all_pages(catalog=catalog, wiki_dir=wiki_dir, max_page_chars=max_page_chars)
-    if selection_mode == "keyword":
+    elif selection_mode == "keyword":
         selected_ids = select_pages_keyword_fallback(
             query,
             catalog=catalog,
@@ -175,6 +212,7 @@ Context catalog:
     else:
         raise ValueError(f"Unsupported selection_mode: {selection_mode}")
 
+    selected_ids = core_ids + [page_id for page_id in selected_ids if page_id not in core_ids]
     return read_pages_by_id(
         selected_ids[:max_selected_files],
         catalog=catalog,
@@ -248,14 +286,16 @@ Agent responsibilities:
   data management, or general project chat.
 - Vision agent inspects attached image pixels when they are present.
 - Retrieval agent uses selected context pages only; do not invent facts outside them.
-- Diagnosis agent keeps uncertainty visible and does not confirm disease when evidence is incomplete.
+- For visual diagnosis, detailed botanical procedure must come from selected wiki pages,
+  not from hidden assumptions in this prompt.
+- Diagnosis agent keeps uncertainty visible according to selected wiki procedure pages.
 - Data agent can explain how to collect, ingest, validate, store, audit, and evaluate data.
 
 Rules:
 - Stay within grape leaf diagnosis and GopherEye project behavior.
-- If the image is not a leaf, say so and do not force a grape diagnosis.
-- If it may be a leaf but not clearly a grape leaf, say evidence is insufficient.
-- If evidence is incomplete, recommend the exact next image when possible.
+- For botanical diagnosis, follow the selected wiki procedure pages for leaf
+  identity, image quality, surface assessment, evidence sufficiency, front/back
+  comparison, differential diagnosis, and next-image requests.
 - Do not recommend treatment unless a reviewed management page is included.
 - If images are attached, inspect pixels and update known_image_updates and visual_intakes.
 - If no image pixels are attached, rely only on memory, transcript, selected context pages, and user text.
@@ -350,6 +390,7 @@ def run_frontier_turn(
         max_page_chars=max_page_chars,
         wiki_dir=context["root_dir"],
         catalog_dir=context["catalog_dir"],
+        core_paths=core_context_paths_for_route(route, context["label"]),
     )
     requested_image_records = wiki_chat.collect_image_records_for_context(
         session,
@@ -381,22 +422,39 @@ def run_frontier_turn(
         max_output_tokens=max_output_tokens,
     )
     raw = model_response.text
-    parsed = wiki_chat.parse_json_object(raw)
+    repair_responses = []
 
-    if parsed and isinstance(parsed.get("assistant_message"), str):
-        assistant_message = parsed["assistant_message"].strip()
-        memory_update = parsed.get("memory_update")
-        if not isinstance(memory_update, dict):
-            memory_update = parsed.get("short_term_memory")
-        session["short_term_memory"] = wiki_chat.normalize_memory(
-            memory_update,
-            session.get("short_term_memory", wiki_chat.default_memory()),
-            session=session,
-            attached_image_manifest=attached_image_manifest,
-            turn_id=user_turn_id,
+    def repair_frontier_envelope(repair_prompt: str) -> str:
+        repair_response = backend.generate(
+            repair_prompt,
+            image_refs=attached_image_refs,
+            max_output_tokens=max_output_tokens,
         )
-    else:
-        assistant_message = raw.strip()
+        repair_responses.append(repair_response)
+        return repair_response.text
+
+    envelope = wiki_chat.resolve_assistant_envelope(
+        raw,
+        role=wiki_chat.frontier_envelope_role(route["task_type"]),
+        expected_task_type=route["task_type"],
+        original_prompt=prompt,
+        repair_callback=repair_frontier_envelope,
+    )
+    assistant_message = envelope["assistant_message"]
+    previous_memory = session.get("short_term_memory", wiki_chat.default_memory())
+    memory_update = envelope["memory_update"]
+    if not envelope["envelope_valid"]:
+        memory_update = wiki_chat.minimal_memory_update_after_envelope_failure(
+            previous_memory,
+            envelope["validation_errors"],
+        )
+    session["short_term_memory"] = wiki_chat.normalize_memory(
+        memory_update,
+        previous_memory,
+        session=session,
+        attached_image_manifest=attached_image_manifest,
+        turn_id=user_turn_id,
+    )
 
     assistant_turn_id = len(session.get("messages", [])) + 1
     session["messages"].append(
@@ -427,9 +485,21 @@ def run_frontier_turn(
             for page in pages
         ],
         "raw_model_output": raw,
-        "parsed_json": parsed is not None,
+        "repair_model_output": envelope["attempts"][1]["raw"] if len(envelope["attempts"]) > 1 else None,
+        "final_model_output": envelope["final_raw"],
+        "parsed_json": envelope["parsed_json"],
+        "envelope_valid": envelope["envelope_valid"],
+        "envelope_schema": envelope["schema_profile"],
+        "envelope_validation_errors": envelope["validation_errors"],
+        "envelope_fallback_used": envelope["fallback_used"],
+        "envelope_attempts": [
+            {key: value for key, value in attempt.items() if key != "raw"}
+            for attempt in envelope["attempts"]
+        ],
         "usage": model_response.usage,
+        "repair_usage": repair_responses[0].usage if repair_responses else None,
         "backend_meta": model_response.backend_meta,
+        "repair_backend_meta": repair_responses[0].backend_meta if repair_responses else None,
         "created_at": now_utc(),
     }
     session.setdefault("turns", []).append(turn_meta)
@@ -449,6 +519,10 @@ def run_frontier_turn(
         "attached_image_refs": attached_image_refs,
         "attached_image_manifest": attached_image_manifest,
         "missing_image_refs": missing_image_refs,
-        "parsed_json": parsed is not None,
+        "parsed_json": envelope["parsed_json"],
+        "envelope_valid": envelope["envelope_valid"],
+        "envelope_schema": envelope["schema_profile"],
+        "envelope_validation_errors": envelope["validation_errors"],
+        "envelope_fallback_used": envelope["fallback_used"],
         "usage": model_response.usage,
     }

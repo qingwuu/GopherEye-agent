@@ -1,9 +1,9 @@
 # GopherEye Frontier Model Agent System
 
 This folder is an isolated prototype for a provider-switchable frontier-model
-agent system. It reuses root-level wiki knowledge, schemas, session memory, image
-bookkeeping, and selected-page workflow, but routes model calls through a
-provider registry.
+agent system. It reuses root-level wiki knowledge, system documentation,
+schemas, session memory, image bookkeeping, and selected-page workflow, but
+routes model calls through a provider registry.
 
 It reuses the root-level wiki app (`chat.py`, `wiki/`, `schemas/`, and
 `src/single_model_wiki/`) and does not replace `Cloud_model/cloud_chat.py`.
@@ -137,7 +137,7 @@ Frontier_model/runs/
 user message / image
 -> router
 -> vision agent if images are attached
--> retrieval agent over wiki pages
+-> retrieval agent over wiki or system pages
 -> diagnosis/chat/data agent
 -> schema-shaped JSON response
 -> session memory update
@@ -147,3 +147,18 @@ user message / image
 The first version uses a deterministic router plus frontier model calls for the
 semantic work. This keeps the flow inspectable and cheap while preserving the
 multi-agent architecture.
+
+For visual diagnosis, the pipeline prefers core botanical procedure pages from
+`wiki/`, such as:
+
+```text
+wiki/procedures/whole_diagnosis_process.md
+wiki/procedures/visual_observation_sequence.md
+wiki/procedures/symptom_localization_procedure.md
+wiki/workflows/evidence_sufficiency.md
+wiki/workflows/front_back_leaf_process.md
+```
+
+The detailed plant diagnostic procedure should stay in `wiki/`. Frontier code
+should reference those pages as context, not duplicate their botanical content
+inside Python rules.

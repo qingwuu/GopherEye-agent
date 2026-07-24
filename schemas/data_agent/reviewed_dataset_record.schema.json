@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/data_agent/reviewed_dataset_record.schema.json",
+  "title": "Data Agent Reviewed Dataset Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "schema_version",
+    "dataset_record_id",
+    "created_at",
+    "instance_id",
+    "instance_dir",
+    "model_label_id",
+    "review_id",
+    "source",
+    "image_ids",
+    "image_links",
+    "human_reviewed_label",
+    "review_decision",
+    "model_label_summary",
+    "selected_pages",
+    "is_ground_truth",
+    "wiki_ingestion_allowed"
+  ],
+  "properties": {
+    "record_type": { "const": "reviewed_dataset_record" },
+    "schema_version": { "const": "data_agent.reviewed_dataset_record.v1" },
+    "dataset_record_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "instance_id": { "type": "string", "minLength": 1 },
+    "instance_dir": { "type": ["string", "null"] },
+    "model_label_id": { "type": ["string", "null"] },
+    "review_id": { "type": ["string", "null"] },
+    "source": { "type": ["object", "null"], "additionalProperties": true },
+    "image_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "image_links": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "human_reviewed_label": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "review_decision": {
+      "type": ["string", "null"],
+      "enum": ["accept_model_label", "correct_label", null]
+    },
+    "model_label_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "selected_pages": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "is_ground_truth": { "const": true },
+    "wiki_ingestion_allowed": { "const": false }
+  }
+}

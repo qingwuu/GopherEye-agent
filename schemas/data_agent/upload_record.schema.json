@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/data_agent/upload_record.schema.json",
+  "title": "Data Agent Upload Record Collection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["record_type", "schema_version", "instance_id", "created_at", "uploads"],
+  "properties": {
+    "record_type": { "const": "upload_record_collection" },
+    "schema_version": { "const": "data_agent.upload_record_collection.v1" },
+    "instance_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "uploads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "record_type",
+          "schema_version",
+          "upload_record_id",
+          "instance_id",
+          "image_id",
+          "source_ref",
+          "stored_path",
+          "copy_status",
+          "image_role",
+          "session_id",
+          "turn_id",
+          "created_at",
+          "review_status",
+          "is_ground_truth"
+        ],
+        "properties": {
+          "record_type": { "const": "upload_record" },
+          "schema_version": { "const": "data_agent.upload_record.v1" },
+          "upload_record_id": { "type": "string", "minLength": 1 },
+          "instance_id": { "type": "string", "minLength": 1 },
+          "image_id": { "type": "string", "minLength": 1 },
+          "source_ref": { "type": ["string", "null"] },
+          "image_uri": { "type": ["string", "null"] },
+          "stored_path": { "type": ["string", "null"] },
+          "copy_status": {
+            "type": "string",
+            "enum": ["not_requested", "copied", "source_missing"]
+          },
+          "image_role": { "type": "string" },
+          "session_id": { "type": ["string", "null"] },
+          "turn_id": { "type": ["integer", "null"] },
+          "first_seen_turn_id": { "type": ["integer", "null"] },
+          "last_seen_turn_id": { "type": ["integer", "null"] },
+          "created_at": { "type": "string", "minLength": 1 },
+          "review_status": { "const": "unreviewed" },
+          "is_ground_truth": { "const": false }
+        }
+      }
+    }
+  }
+}

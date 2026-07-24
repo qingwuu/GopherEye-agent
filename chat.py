@@ -111,6 +111,308 @@ def parse_json_object(text: str) -> Dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+MEMORY_UPDATE_CORE_KEYS = [
+    "summary",
+    "evidence_present",
+    "evidence_missing",
+    "recommended_next_image",
+    "allowed_follow_up_questions",
+    "open_questions",
+]
+MEMORY_UPDATE_LIST_KEYS = [
+    "known_image_updates",
+    "visual_intakes",
+    "evidence_present",
+    "evidence_missing",
+    "allowed_follow_up_questions",
+    "open_questions",
+]
+PROTECTED_MODEL_MEMORY_KEYS = {
+    "session_id",
+    "turn_id",
+    "image_id",
+    "image_path",
+    "visual_intake_id",
+    "created_at",
+    "updated_at",
+}
+ENVELOPE_SCHEMA_PROFILES: Dict[str, Dict[str, Any]] = {
+    "chat": {
+        "schema_name": "schemas/envelopes/chat_envelope.schema.json",
+        "requires_agent_trace": False,
+        "requires_visual_memory": False,
+    },
+    "frontier_visual_intake_or_diagnosis": {
+        "schema_name": "schemas/envelopes/frontier_visual_diagnosis_envelope.schema.json",
+        "requires_agent_trace": True,
+        "requires_visual_memory": True,
+    },
+    "frontier_grape_leaf_chat": {
+        "schema_name": "schemas/envelopes/frontier_chat_envelope.schema.json",
+        "requires_agent_trace": True,
+        "requires_visual_memory": False,
+    },
+    "frontier_data_management": {
+        "schema_name": "schemas/envelopes/frontier_data_management_envelope.schema.json",
+        "requires_agent_trace": True,
+        "requires_visual_memory": False,
+    },
+    "frontier_knowledge_management": {
+        "schema_name": "schemas/envelopes/frontier_chat_envelope.schema.json",
+        "requires_agent_trace": True,
+        "requires_visual_memory": False,
+    },
+    "frontier_general_project_chat": {
+        "schema_name": "schemas/envelopes/frontier_chat_envelope.schema.json",
+        "requires_agent_trace": True,
+        "requires_visual_memory": False,
+    },
+}
+
+
+def envelope_schema_profile(role: str) -> Dict[str, Any]:
+    return ENVELOPE_SCHEMA_PROFILES.get(role, ENVELOPE_SCHEMA_PROFILES["chat"])
+
+
+def frontier_envelope_role(task_type: str) -> str:
+    return f"frontier_{task_type}"
+
+
+def find_protected_memory_keys(value: Any, *, path: str = "memory_update") -> List[str]:
+    found = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in PROTECTED_MODEL_MEMORY_KEYS:
+                found.append(child_path)
+            found.extend(find_protected_memory_keys(child, path=child_path))
+    elif isinstance(value, list):
+        for idx, child in enumerate(value):
+            found.extend(find_protected_memory_keys(child, path=f"{path}[{idx}]"))
+    return found
+
+
+def validate_assistant_envelope(
+    value: Any,
+    *,
+    role: str = "chat",
+    expected_task_type: str | None = None,
+) -> List[str]:
+    profile = envelope_schema_profile(role)
+    errors = []
+    if not isinstance(value, dict):
+        return ["Envelope must be a JSON object."]
+
+    assistant_message = value.get("assistant_message")
+    if not isinstance(assistant_message, str) or not assistant_message.strip():
+        errors.append("assistant_message must be a non-empty string.")
+
+    memory_update = value.get("memory_update")
+    if not isinstance(memory_update, dict):
+        errors.append("memory_update must be an object.")
+        memory_update = {}
+
+    if profile.get("requires_agent_trace"):
+        agent_trace = value.get("agent_trace")
+        if not isinstance(agent_trace, dict):
+            errors.append("agent_trace must be an object for this role.")
+        else:
+            task_type = agent_trace.get("task_type")
+            selected_agent_path = agent_trace.get("selected_agent_path")
+            if not isinstance(task_type, str) or not task_type.strip():
+                errors.append("agent_trace.task_type must be a non-empty string.")
+            elif expected_task_type and task_type != expected_task_type:
+                errors.append(
+                    f"agent_trace.task_type must be {expected_task_type!r}, got {task_type!r}."
+                )
+            if not isinstance(selected_agent_path, list) or not all(
+                isinstance(item, str) for item in selected_agent_path
+            ):
+                errors.append("agent_trace.selected_agent_path must be a list of strings.")
+
+    for key in MEMORY_UPDATE_CORE_KEYS:
+        if key not in memory_update:
+            errors.append(f"memory_update.{key} is required.")
+
+    if "summary" in memory_update and not isinstance(memory_update.get("summary"), str):
+        errors.append("memory_update.summary must be a string.")
+    if "recommended_next_image" in memory_update and not (
+        memory_update.get("recommended_next_image") is None
+        or isinstance(memory_update.get("recommended_next_image"), str)
+    ):
+        errors.append("memory_update.recommended_next_image must be a string or null.")
+    for key in ["user_goal", "current_diagnosis"]:
+        if key in memory_update and not (memory_update.get(key) is None or isinstance(memory_update.get(key), str)):
+            errors.append(f"memory_update.{key} must be a string or null.")
+    for key in MEMORY_UPDATE_LIST_KEYS:
+        if key in memory_update and not isinstance(memory_update.get(key), list):
+            errors.append(f"memory_update.{key} must be a list.")
+
+    if profile.get("requires_visual_memory"):
+        for key in ["known_image_updates", "visual_intakes"]:
+            if key not in memory_update:
+                errors.append(f"memory_update.{key} is required for visual diagnosis.")
+
+    protected_keys = find_protected_memory_keys(memory_update)
+    if protected_keys:
+        preview = ", ".join(protected_keys[:6])
+        errors.append(f"memory_update must not include code-owned ID/timestamp fields: {preview}.")
+
+    return errors
+
+
+def build_envelope_repair_prompt(
+    *,
+    original_prompt: str,
+    invalid_output: str,
+    errors: Sequence[str],
+    role: str,
+    expected_task_type: str | None = None,
+) -> str:
+    profile = envelope_schema_profile(role)
+    expected_task_text = expected_task_type or "(not required)"
+    return f"""Your previous response did not satisfy the required GopherEye JSON envelope.
+
+Return ONLY corrected JSON. Do not include markdown fences or explanation.
+
+Required schema profile:
+{profile['schema_name']}
+
+Expected task_type:
+{expected_task_text}
+
+Validation errors:
+{json.dumps(list(errors), ensure_ascii=False, indent=2)}
+
+The corrected response must have:
+- assistant_message: non-empty natural language string for the user.
+- memory_update: structured object for session memory.
+- agent_trace: required only when the schema profile includes it.
+- no code-owned fields inside memory_update, including session_id, turn_id,
+  image_id, image_path, visual_intake_id, created_at, or updated_at.
+
+Original task prompt:
+{trim_text(original_prompt, 6000)}
+
+Invalid model output:
+{trim_text(invalid_output, 4000)}
+
+Return corrected JSON now:"""
+
+
+def fallback_assistant_message(parsed: Dict[str, Any] | None, raw: str) -> str:
+    if parsed and isinstance(parsed.get("assistant_message"), str) and parsed["assistant_message"].strip():
+        return parsed["assistant_message"].strip()
+    stripped = raw.strip()
+    if (
+        not stripped
+        or stripped.startswith(("{", "[", "```"))
+        or '"assistant_message"' in stripped
+        or '"memory_update"' in stripped
+        or "Return JSON" in stripped
+    ):
+        return (
+            "I could not produce a valid structured response for this turn. "
+            "Please try again, or upload a clearer image if this is a diagnosis request."
+        )
+    return trim_text(stripped, 1200).strip()
+
+
+def minimal_memory_update_after_envelope_failure(previous: Dict[str, Any], errors: Sequence[str]) -> Dict[str, Any]:
+    open_questions = list(previous.get("open_questions") or [])
+    open_questions.append("Last model response failed JSON envelope validation.")
+    return {
+        "summary": previous.get("summary") or "Last model response failed JSON envelope validation.",
+        "evidence_present": previous.get("evidence_present") or [],
+        "evidence_missing": previous.get("evidence_missing") or [],
+        "recommended_next_image": previous.get("recommended_next_image"),
+        "allowed_follow_up_questions": previous.get("allowed_follow_up_questions") or [],
+        "open_questions": open_questions[-12:],
+        "validation_errors": list(errors)[:12],
+    }
+
+
+def resolve_assistant_envelope(
+    raw: str,
+    *,
+    role: str,
+    original_prompt: str,
+    expected_task_type: str | None = None,
+    repair_callback: Any | None = None,
+) -> Dict[str, Any]:
+    attempts = []
+    parsed = parse_json_object(raw)
+    errors = validate_assistant_envelope(parsed, role=role, expected_task_type=expected_task_type)
+    attempts.append(
+        {
+            "attempt": "initial",
+            "raw": raw,
+            "parsed_json": parsed is not None,
+            "envelope_valid": not errors,
+            "errors": errors,
+        }
+    )
+    final_raw = raw
+    final_parsed = parsed
+    final_errors = errors
+
+    if errors and repair_callback is not None:
+        repair_prompt = build_envelope_repair_prompt(
+            original_prompt=original_prompt,
+            invalid_output=raw,
+            errors=errors,
+            role=role,
+            expected_task_type=expected_task_type,
+        )
+        repair_raw = repair_callback(repair_prompt)
+        repair_parsed = parse_json_object(repair_raw)
+        repair_errors = validate_assistant_envelope(
+            repair_parsed,
+            role=role,
+            expected_task_type=expected_task_type,
+        )
+        attempts.append(
+            {
+                "attempt": "repair",
+                "raw": repair_raw,
+                "parsed_json": repair_parsed is not None,
+                "envelope_valid": not repair_errors,
+                "errors": repair_errors,
+            }
+        )
+        final_raw = repair_raw
+        final_parsed = repair_parsed
+        final_errors = repair_errors
+
+    envelope_valid = not final_errors
+    if envelope_valid and final_parsed:
+        return {
+            "assistant_message": final_parsed["assistant_message"].strip(),
+            "memory_update": final_parsed["memory_update"],
+            "parsed_json": True,
+            "envelope_valid": True,
+            "fallback_used": False,
+            "final_raw": final_raw,
+            "final_parsed": final_parsed,
+            "validation_errors": [],
+            "attempts": attempts,
+            "schema_profile": envelope_schema_profile(role)["schema_name"],
+        }
+
+    return {
+        "assistant_message": fallback_assistant_message(final_parsed, final_raw),
+        "memory_update": None,
+        "parsed_json": final_parsed is not None,
+        "envelope_valid": False,
+        "fallback_used": True,
+        "final_raw": final_raw,
+        "final_parsed": final_parsed,
+        "validation_errors": final_errors,
+        "attempts": attempts,
+        "schema_profile": envelope_schema_profile(role)["schema_name"],
+    }
+
+
 def ensure_id_history(session: Dict[str, Any]) -> Dict[str, Any]:
     history = session.get("id_history")
     if not isinstance(history, dict):
@@ -918,22 +1220,33 @@ def run_chat_turn(
         image_refs=attached_image_refs,
         max_new_tokens=max_new_tokens,
     )
-    parsed = parse_json_object(raw)
-
-    if parsed and isinstance(parsed.get("assistant_message"), str):
-        assistant_message = parsed["assistant_message"].strip()
-        memory_update = parsed.get("memory_update")
-        if not isinstance(memory_update, dict):
-            memory_update = parsed.get("short_term_memory")
-        session["short_term_memory"] = normalize_memory(
-            memory_update,
-            session.get("short_term_memory", default_memory()),
-            session=session,
-            attached_image_manifest=attached_image_manifest,
-            turn_id=user_turn_id,
+    envelope = resolve_assistant_envelope(
+        raw,
+        role="chat",
+        original_prompt=prompt,
+        repair_callback=lambda repair_prompt: run_model_with_images(
+            repair_prompt,
+            provider=provider,
+            model=model,
+            image_refs=attached_image_refs,
+            max_new_tokens=max_new_tokens,
+        ),
+    )
+    assistant_message = envelope["assistant_message"]
+    previous_memory = session.get("short_term_memory", default_memory())
+    memory_update = envelope["memory_update"]
+    if not envelope["envelope_valid"]:
+        memory_update = minimal_memory_update_after_envelope_failure(
+            previous_memory,
+            envelope["validation_errors"],
         )
-    else:
-        assistant_message = raw.strip()
+    session["short_term_memory"] = normalize_memory(
+        memory_update,
+        previous_memory,
+        session=session,
+        attached_image_manifest=attached_image_manifest,
+        turn_id=user_turn_id,
+    )
 
     assistant_turn_id = len(session.get("messages", [])) + 1
     assistant_row = {
@@ -960,7 +1273,17 @@ def run_chat_turn(
             for page in pages
         ],
         "raw_model_output": raw,
-        "parsed_json": parsed is not None,
+        "repair_model_output": envelope["attempts"][1]["raw"] if len(envelope["attempts"]) > 1 else None,
+        "final_model_output": envelope["final_raw"],
+        "parsed_json": envelope["parsed_json"],
+        "envelope_valid": envelope["envelope_valid"],
+        "envelope_schema": envelope["schema_profile"],
+        "envelope_validation_errors": envelope["validation_errors"],
+        "envelope_fallback_used": envelope["fallback_used"],
+        "envelope_attempts": [
+            {key: value for key, value in attempt.items() if key != "raw"}
+            for attempt in envelope["attempts"]
+        ],
         "created_at": now_utc(),
     }
     session.setdefault("turns", []).append(turn_meta)
@@ -976,7 +1299,11 @@ def run_chat_turn(
         "attached_image_refs": attached_image_refs,
         "attached_image_manifest": attached_image_manifest,
         "missing_image_refs": missing_image_refs,
-        "parsed_json": parsed is not None,
+        "parsed_json": envelope["parsed_json"],
+        "envelope_valid": envelope["envelope_valid"],
+        "envelope_schema": envelope["schema_profile"],
+        "envelope_validation_errors": envelope["validation_errors"],
+        "envelope_fallback_used": envelope["fallback_used"],
     }
 
 

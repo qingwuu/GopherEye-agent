@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,27 @@ class ModelBackend:
 
 
 class EchoBackend(ModelBackend):
+    def _route_from_prompt(self, prompt: str) -> Dict[str, Any]:
+        match = re.search(
+            r"Route:\s*(\{[\s\S]*?\})\s*Current short-term memory JSON:",
+            prompt,
+        )
+        if not match:
+            return {
+                "task_type": "echo",
+                "selected_agent_path": ["router", "echo"],
+                "needs_vision": bool("image_refs" in prompt),
+            }
+        try:
+            route = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            return {
+                "task_type": "echo",
+                "selected_agent_path": ["router", "echo"],
+                "needs_vision": bool("image_refs" in prompt),
+            }
+        return route if isinstance(route, dict) else {}
+
     def generate(
         self,
         prompt: str,
@@ -47,14 +69,15 @@ class EchoBackend(ModelBackend):
         image_refs: Sequence[str] = (),
         max_output_tokens: int = 900,
     ) -> ModelResponse:
+        route = self._route_from_prompt(prompt)
         text = {
             "assistant_message": (
                 "Echo backend received the request. Select a real profile such as "
                 "openai_frontier, anthropic_frontier, kimi, or qwen_local for model output."
             ),
             "agent_trace": {
-                "task_type": "echo",
-                "selected_agent_path": ["router", "echo"],
+                "task_type": route.get("task_type", "echo"),
+                "selected_agent_path": route.get("selected_agent_path", ["router", "echo"]),
                 "needs_follow_up": False,
             },
             "memory_update": {

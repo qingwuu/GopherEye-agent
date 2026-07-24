@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/envelopes/frontier_data_management_envelope.schema.json",
+  "title": "Frontier Data Management Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assistant_message", "agent_trace", "memory_update"],
+  "properties": {
+    "assistant_message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_trace": {
+      "$ref": "common_assistant_envelope_defs.schema.json#/$defs/agent_trace"
+    },
+    "memory_update": {
+      "$ref": "common_assistant_envelope_defs.schema.json#/$defs/memory_update"
+    }
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/data_agent/human_review.schema.json",
+  "title": "Data Agent Human Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "schema_version",
+    "review_id",
+    "instance_id",
+    "model_label_id",
+    "created_at",
+    "review_status",
+    "reviewer",
+    "reviewed_at",
+    "decision",
+    "human_reviewed_label",
+    "model_label_summary",
+    "upload_summary",
+    "corrections",
+    "do_not_ingest_reason"
+  ],
+  "properties": {
+    "record_type": { "const": "human_review" },
+    "schema_version": { "const": "data_agent.human_review.v1" },
+    "review_id": { "type": "string", "minLength": 1 },
+    "instance_id": { "type": "string", "minLength": 1 },
+    "model_label_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "review_status": { "type": "string", "enum": ["draft", "reviewed"] },
+    "reviewer": { "type": "string" },
+    "reviewed_at": { "type": ["string", "null"] },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "accept_model_label",
+        "correct_label",
+        "reject_not_leaf",
+        "reject_unusable_image",
+        "needs_more_evidence"
+      ]
+    },
+    "human_reviewed_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disease", "severity", "leaf_side", "evidence_sufficiency", "confidence", "notes"],
+      "properties": {
+        "disease": { "type": ["string", "null"] },
+        "severity": { "type": ["string", "null"] },
+        "leaf_side": {
+          "type": ["string", "null"],
+          "enum": ["adaxial", "abaxial", "mixed", "uncertain", "not_leaf", null]
+        },
+        "evidence_sufficiency": {
+          "type": "string",
+          "enum": ["sufficient", "insufficient", "not_applicable", "unknown"]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "moderate", "high", "very_high", "unknown"]
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "model_label_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "upload_summary": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "corrections": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "do_not_ingest_reason": { "type": ["string", "null"] }
+  }
+}

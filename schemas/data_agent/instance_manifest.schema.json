@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/data_agent/instance_manifest.schema.json",
+  "title": "Data Agent Instance Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "schema_version",
+    "instance_id",
+    "created_at",
+    "updated_at",
+    "review_status",
+    "is_ground_truth",
+    "source",
+    "session_path",
+    "instance_dir",
+    "image_ids",
+    "model_label_id",
+    "review_id",
+    "files",
+    "linked_files",
+    "boundary"
+  ],
+  "properties": {
+    "record_type": { "const": "data_agent_instance_manifest" },
+    "schema_version": { "const": "data_agent.instance_manifest.v1" },
+    "instance_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "string", "minLength": 1 },
+    "review_status": { "type": "string", "enum": ["unreviewed", "reviewed"] },
+    "is_ground_truth": { "type": "boolean" },
+    "source": { "type": ["object", "null"] },
+    "session_path": { "type": ["string", "null"] },
+    "instance_dir": { "type": ["string", "null"] },
+    "image_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "model_label_id": { "type": ["string", "null"] },
+    "review_id": { "type": "string", "minLength": 1 },
+    "files": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "linked_files": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "llm_calls_created_by_data_agent",
+        "label_source",
+        "wiki_write_allowed",
+        "human_review_required_for_ground_truth"
+      ],
+      "properties": {
+        "llm_calls_created_by_data_agent": { "type": "integer", "minimum": 0 },
+        "label_source": { "type": "string" },
+        "wiki_write_allowed": { "type": "boolean" },
+        "human_review_required_for_ground_truth": { "type": "boolean" }
+      }
+    }
+  }
+}
