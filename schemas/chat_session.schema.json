@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/chat_session.schema.json",
+  "title": "Chat Session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "created_at",
+    "updated_at",
+    "provider",
+    "model",
+    "short_term_memory",
+    "messages",
+    "turns"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "id_history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "images": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "visual_intakes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "counters": {
+          "type": "object"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "short_term_memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "user_goal",
+        "current_diagnosis",
+        "known_images",
+        "visual_intakes",
+        "evidence_present",
+        "evidence_missing",
+        "recommended_next_image",
+        "allowed_follow_up_questions",
+        "open_questions"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "user_goal": {
+          "type": ["string", "null"]
+        },
+        "current_diagnosis": {
+          "type": ["string", "null"]
+        },
+        "known_images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["image_id", "image_path"],
+            "properties": {
+              "image_id": {
+                "type": "string"
+              },
+              "image_path": {
+                "type": "string"
+              },
+              "image_role": {
+                "type": "string"
+              },
+              "side_label": {
+                "type": ["string", "null"]
+              },
+              "quality_overall": {
+                "type": ["string", "null"]
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string"
+              },
+              "first_seen_turn_id": {
+                "type": "integer"
+              },
+              "last_seen_turn_id": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "visual_intakes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["visual_intake_id", "image_id", "intake_summary"],
+            "properties": {
+              "visual_intake_id": {
+                "type": "string"
+              },
+              "image_id": {
+                "type": "string"
+              },
+              "is_leaf_image": {
+                "type": "boolean"
+              },
+              "intake_summary": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "evidence_present": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_next_image": {
+          "type": ["string", "null"]
+        },
+        "allowed_follow_up_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["turn_id", "role", "content", "created_at"],
+        "properties": {
+          "turn_id": {
+            "type": "integer"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["user", "assistant"]
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "image_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "turns": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

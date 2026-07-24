@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/visual_intake.schema.json",
+  "title": "Visual Intake",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "is_leaf_image",
+    "image_quality",
+    "side_assessment",
+    "visible_symptoms",
+    "candidate_diseases",
+    "intake_summary"
+  ],
+  "properties": {
+    "is_leaf_image": {
+      "type": "boolean"
+    },
+    "image_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "issues"],
+      "properties": {
+        "overall": {
+          "type": "string",
+          "enum": ["good", "usable_with_caution", "unusable"]
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "blurry",
+              "dark",
+              "overexposed",
+              "poor_angle",
+              "occluded",
+              "low_resolution",
+              "duplicate"
+            ]
+          }
+        }
+      }
+    },
+    "side_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side_label", "confidence"],
+      "properties": {
+        "side_label": {
+          "type": "string",
+          "enum": ["adaxial", "abaxial", "mixed", "uncertain", "not_leaf"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "visible_symptoms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "chlorosis",
+          "necrosis",
+          "powdery_growth",
+          "downy_fuzzy_growth",
+          "vein_bounded_spots",
+          "edge_curling",
+          "wilting",
+          "healthy_uniform_green",
+          "unknown_spots",
+          "lesion",
+          "water_soaked_area",
+          "yellow_halo",
+          "insect_damage",
+          "gall"
+        ]
+      }
+    },
+    "visible_structures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "blade",
+          "lamina",
+          "lobes",
+          "serrated_margin",
+          "petiole",
+          "midrib",
+          "primary_veins",
+          "secondary_veins",
+          "apex",
+          "leaf_base",
+          "adaxial_surface",
+          "abaxial_surface"
+        ]
+      }
+    },
+    "symptom_locations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "candidate_diseases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["disease", "confidence", "supporting_evidence"],
+        "properties": {
+          "disease": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "moderate", "high", "very_high", "unknown"]
+          },
+          "supporting_evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "intake_summary": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/wiki_update_proposal.schema.json",
+  "title": "Wiki Update Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_id",
+    "source_summary",
+    "proposed_new_pages",
+    "proposed_page_updates",
+    "proposed_links",
+    "unclear_points",
+    "review_status"
+  ],
+  "properties": {
+    "source_id": {
+      "type": "string"
+    },
+    "source_summary": {
+      "type": "string"
+    },
+    "proposed_new_pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "proposed_page_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "section", "change_summary"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "change_summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "proposed_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from_path", "to_path", "reason"],
+        "properties": {
+          "from_path": {
+            "type": "string"
+          },
+          "to_path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unclear_points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "needs_human_review", "accepted", "rejected"]
+    }
+  }
+}
+

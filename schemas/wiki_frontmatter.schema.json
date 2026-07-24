@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/wiki_frontmatter.schema.json",
+  "title": "Wiki Page Frontmatter",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["title", "page_type", "review_status", "last_updated"],
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "page_type": {
+      "type": "string",
+      "enum": [
+        "disease_page",
+        "symptom_page",
+        "workflow_page",
+        "schema_explanation",
+        "tool_explanation",
+        "model_page",
+        "dataset_page",
+        "expert_page",
+        "treatment_page",
+        "procedure_page",
+        "dialog_page",
+        "source_requirement",
+        "template_page",
+        "decision_log"
+      ]
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "needs_review", "reviewed", "deprecated"]
+    },
+    "last_updated": {
+      "type": "string"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+

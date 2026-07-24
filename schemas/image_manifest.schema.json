@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/image_manifest.schema.json",
+  "title": "Image Manifest Row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "image_id",
+    "image_path",
+    "image_type",
+    "caption",
+    "disease",
+    "side_label",
+    "visible_structures",
+    "visible_symptoms",
+    "review_status"
+  ],
+  "properties": {
+    "image_id": {
+      "type": "string"
+    },
+    "image_path": {
+      "type": "string"
+    },
+    "image_type": {
+      "type": "string",
+      "enum": ["curated_diagram", "disease_example", "normal_leaf_example", "raw_upload", "evaluation_image"]
+    },
+    "caption": {
+      "type": "string"
+    },
+    "disease": {
+      "type": ["string", "null"]
+    },
+    "side_label": {
+      "type": "string",
+      "enum": ["adaxial", "abaxial", "mixed", "uncertain", "not_leaf"]
+    },
+    "visible_structures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "blade",
+          "lamina",
+          "lobes",
+          "serrated_margin",
+          "petiole",
+          "midrib",
+          "primary_veins",
+          "secondary_veins",
+          "apex",
+          "leaf_base",
+          "adaxial_surface",
+          "abaxial_surface"
+        ]
+      }
+    },
+    "visible_symptoms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "chlorosis",
+          "necrosis",
+          "powdery_growth",
+          "downy_fuzzy_growth",
+          "vein_bounded_spots",
+          "edge_curling",
+          "wilting",
+          "healthy_uniform_green",
+          "unknown_spots",
+          "lesion",
+          "water_soaked_area",
+          "yellow_halo",
+          "insect_damage",
+          "gall"
+        ]
+      }
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "needs_review", "verified", "rejected"]
+    }
+  }
+}
+

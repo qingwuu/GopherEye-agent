@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/diagnosis_output.schema.json",
+  "title": "Diagnosis Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "diagnosis_status",
+    "provisional_diagnosis",
+    "confidence",
+    "evidence_present",
+    "evidence_missing",
+    "evidence_sufficiency",
+    "recommended_next_image",
+    "differential_diagnoses",
+    "user_message",
+    "allowed_follow_up_questions"
+  ],
+  "properties": {
+    "diagnosis_status": {
+      "type": "string",
+      "enum": ["no_leaf", "poor_quality", "provisional", "confirmed", "uncertain"]
+    },
+    "provisional_diagnosis": {
+      "type": ["string", "null"]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "moderate", "high", "very_high", "unknown"]
+    },
+    "evidence_present": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_sufficiency": {
+      "type": "string",
+      "enum": [
+        "sufficient",
+        "insufficient_need_adaxial",
+        "insufficient_need_abaxial",
+        "insufficient_need_better_quality",
+        "uncertain"
+      ]
+    },
+    "recommended_next_image": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "adaxial_surface_same_leaf",
+        "abaxial_surface_same_leaf",
+        "both_sides_same_leaf",
+        "clearer_same_view",
+        "wider_context",
+        "none"
+      ]
+    },
+    "differential_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["disease", "reason_to_consider", "reason_against"],
+        "properties": {
+          "disease": {
+            "type": "string"
+          },
+          "reason_to_consider": {
+            "type": "string"
+          },
+          "reason_against": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "user_message": {
+      "type": "string"
+    },
+    "allowed_follow_up_questions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+

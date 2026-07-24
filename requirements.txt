@@ -1,0 +1,9 @@
+transformers
+accelerate
+torch
+sentencepiece
+openai
+python-dotenv
+jsonschema
+qwen-vl-utils
+pillow

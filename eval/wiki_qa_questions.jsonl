@@ -1,0 +1,4 @@
+{"id":"wiki_qa_001","question":"What is the difference between the single-model wiki path and the original embedding-based Wiki?","must_include":["single model","catalog","no embedding"],"must_not_include":["automatic hyperlink clicking"]}
+{"id":"wiki_qa_002","question":"Why should raw sources not directly become curated wiki pages?","must_include":["human review","raw source","curated wiki"],"must_not_include":["raw sources are always final truth"]}
+{"id":"wiki_qa_003","question":"What is the role of schemas in the GopherEye wiki app?","must_include":["validate","JSON","contract"],"must_not_include":["schema is only documentation"]}
+

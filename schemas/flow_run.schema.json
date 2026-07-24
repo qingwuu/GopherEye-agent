@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/flow_run.schema.json",
+  "title": "Flow Run Log",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["flow_name", "started_at", "completed_at", "status", "steps"],
+  "properties": {
+    "flow_name": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "needs_human_review"]
+    },
+    "model": {
+      "type": ["string", "null"]
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["succeeded", "failed", "skipped", "needs_human_review"]
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+
