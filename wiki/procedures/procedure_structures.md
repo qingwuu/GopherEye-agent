@@ -1,88 +1,115 @@
 ---
-title: Procedure Structures
+title: Botanical Procedure Types
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-24
 sources: []
 ---
 
-# Procedure Structures
+# Botanical Procedure Types
 
-Procedures can be organized in several ways. Use the structure that matches the
-question being answered.
+Grape leaf diagnosis uses several domain procedure types. Each type answers a
+different botanical question.
 
-## User-Facing Procedure
+## Observation Procedure
 
-Use when designing the app experience.
-
-```text
-user action
-system check
-system response
-next user action
-```
-
-Example:
+Use when the first task is to inspect the image without jumping to a disease
+label.
 
 ```text
-upload upper side
--> system detects only adaxial evidence
--> system asks for underside of same leaf
--> user uploads underside
--> system updates diagnosis
+plant part
+grape leaf plausibility
+image quality
+leaf surface
+visible anatomical structures
+normal structures
+abnormal signs
 ```
 
-## App-Facing Procedure
+See [Visual Observation Sequence](visual_observation_sequence.md).
 
-Use when designing prompts and validation.
+## Symptom Localization Procedure
+
+Use when symptoms are visible and need to be described precisely.
 
 ```text
-input payload
-selected wiki pages
-schema
-assistant output
-validator result
-retry or accept
+surface: adaxial or abaxial
+blade region: apex, base, margin, interveinal area, near veins
+pattern: scattered, clustered, vein-bounded, marginal, widespread
+appearance: chlorotic, necrotic, powdery, fuzzy, water-soaked, raised, sunken
 ```
 
-## Expert-Review Procedure
+See [Symptom Localization Procedure](symptom_localization_procedure.md).
 
-Use when converting expert knowledge into wiki content.
+## Surface Comparison Procedure
+
+Use when one side of the leaf is visible but the opposite surface may contain
+important evidence.
 
 ```text
-raw expert note
-source manifest row
-draft update
-reviewed wiki claim
-linked example case
-eval oracle
+identify current surface
+decide whether the opposite surface is diagnostically important
+request the same leaf from the missing side when needed
+compare lesion position, vein relation, and surface growth across both sides
 ```
 
-## Disease-Centric Procedure
+See [Front/Back Leaf Process](../workflows/front_back_leaf_process.md).
 
-Use inside disease pages.
+## Evidence Sufficiency Procedure
+
+Use when deciding whether the assistant has enough botanical evidence to answer.
 
 ```text
-required visual evidence
-front-side clues
-back-side clues
-differential diagnosis checks
-evidence insufficiency behavior
-treatment resources
+quality sufficient or insufficient
+surface sufficient or missing
+symptom description specific or vague
+differentials separated or still overlapping
+next image or observation needed
 ```
 
-## Treatment-Resource Procedure
+See [Evidence Sufficiency](../workflows/evidence_sufficiency.md).
 
-Use when a user asks what to do after a diagnosis.
+## Differential Diagnosis Procedure
+
+Use when symptoms could fit more than one condition.
 
 ```text
-check diagnosis status
-check selected treatment pages
-check review status
-answer with citation or refuse to recommend
-record source gap if resource is missing
+candidate condition
+evidence supporting it
+evidence against it
+evidence still missing
+most useful next observation
 ```
 
-See [Whole Diagnosis Process](whole_diagnosis_process.md),
-[Treatment Resource Policy](../treatment_resources/treatment_resource_policy.md), and
-[Disease Page Template](../diseases/disease_page_template.md).
+See [Differential Diagnosis Procedure](differential_diagnosis_procedure.md).
+
+## Treatment Boundary Procedure
+
+Use when the user asks what to do after a suspected diagnosis.
+
+```text
+state diagnosis confidence
+avoid management advice when diagnosis is weak
+use only reviewed management resources
+separate general image guidance from treatment recommendation
+```
+
+See [Treatment Resource Policy](../treatment_resources/treatment_resource_policy.md).
+
+## Expert Review Procedure
+
+Use when a case needs human review.
+
+```text
+visible evidence summary
+provisional diagnosis
+main uncertainty
+missing surface or missing symptom detail
+question for reviewer
+reviewed conclusion
+```
+
+Expert review turns uncertain observations into reviewed knowledge or case
+examples, but unreviewed observations should not become wiki truth.
+
+See [Whole Grape Leaf Diagnosis Process](whole_diagnosis_process.md).

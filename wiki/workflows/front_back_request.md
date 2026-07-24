@@ -2,14 +2,14 @@
 title: Front/Back Image Request
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-12
+last_updated: 2026-07-24
 sources: []
 ---
 
 # Front/Back Image Request
 
-GopherEye should reason about leaf side because some diagnostic evidence is more
-visible on one surface than the other.
+Requesting the opposite leaf surface is a diagnostic action. It should be tied
+to a clear botanical uncertainty.
 
 ## Leaf Side Labels
 
@@ -21,49 +21,50 @@ uncertain
 not_leaf
 ```
 
-## Request Rules
-
-Request the abaxial side when:
+## Request The Abaxial Side When
 
 ```text
-only adaxial image is available
-underside evidence is important for the suspected disease
-diagnosis confidence is low or moderate
-downy mildew vs powdery mildew distinction is uncertain
+only the adaxial surface is available
+underside fungal growth or sporulation would change the diagnosis
+upper-surface yellowing needs underside comparison
+powdery vs downy surface evidence remains uncertain
+lesion alignment across surfaces would strengthen the diagnosis
 ```
 
-Request the adaxial side when:
+## Request The Adaxial Side When
 
 ```text
-only abaxial image is available
-upper-surface lesion pattern is needed
-chlorosis, halo, or vein-bounded spots must be inspected
+only the abaxial surface is available
+upper-surface lesion shape is needed
+chlorosis, halos, or vein-bounded patterns must be inspected
+the underside image shows growth but upper lesion context is missing
 ```
 
-Request a clearer image when:
+## Request A Clearer Same View When
 
 ```text
-image is blurry
-image is dark
-image is overexposed
-leaf is occluded
-symptoms cannot be inspected
+the symptomatic area is blurry
+lighting hides surface texture
+the leaf is overexposed
+the lesion edge is out of frame
+the surface label cannot be judged
 ```
+
+## Avoid Unnecessary Requests
+
+Do not request both sides automatically. Ask for the opposite surface only when
+it would resolve a diagnostic uncertainty or improve comparison against likely
+differentials.
 
 ## User-Facing Language
 
 Use concise language:
 
 ```text
-This may be powdery mildew, but I need the underside of the same leaf to check
-for white web-like mycelium or powdery colonies before making a stronger
-diagnosis.
+This image shows one side of the leaf. I need the underside of the same leaf to
+check whether the visible spots correspond to underside growth before making a
+stronger diagnosis.
 ```
 
-See [Evidence Sufficiency](evidence_sufficiency.md).
-
-## Whole Process
-
-For the full intake, pairing, comparison, and diagnosis update sequence, see
+See [Evidence Sufficiency](evidence_sufficiency.md) and
 [Front/Back Leaf Process](front_back_leaf_process.md).
-

@@ -11,7 +11,10 @@ The wiki answers app-facing questions from curated grape leaf knowledge:
 ```text
 plant and grape leaf anatomy
 leaf surface and image quality routines
+visual observation sequence
+symptom localization routine
 diagnosis evidence sufficiency
+botanical differential diagnosis
 front/back image procedure
 expert case structure
 treatment resource guardrails
@@ -29,11 +32,14 @@ System implementation details live outside `wiki/` in `system/`, `schemas/`,
 
 ## Diagnosis Procedures And Routines
 
+- [Whole Grape Leaf Diagnosis Process](procedures/whole_diagnosis_process.md)
+- [Botanical Procedure Types](procedures/procedure_structures.md)
+- [Visual Observation Sequence](procedures/visual_observation_sequence.md)
+- [Symptom Localization Procedure](procedures/symptom_localization_procedure.md)
+- [Differential Diagnosis Procedure](procedures/differential_diagnosis_procedure.md)
 - [Evidence Sufficiency](workflows/evidence_sufficiency.md)
 - [Front/Back Image Request](workflows/front_back_request.md)
 - [Front/Back Leaf Process](workflows/front_back_leaf_process.md)
-- [Whole Diagnosis Process](procedures/whole_diagnosis_process.md)
-- [Procedure Structures](procedures/procedure_structures.md)
 - [Diagnosis Scripts](diagnosis/diagnosis_scripts.md)
 - [Grape Leaf Diagnosis Dialog Tree](dialogs/grape_leaf_diagnosis_dialog_tree.md)
 

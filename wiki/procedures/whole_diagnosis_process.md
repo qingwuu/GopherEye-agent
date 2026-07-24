@@ -1,85 +1,118 @@
 ---
-title: Whole Diagnosis Process
+title: Whole Grape Leaf Diagnosis Process
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-24
 sources: []
 ---
 
-# Whole Diagnosis Process
+# Whole Grape Leaf Diagnosis Process
 
-This procedure links the user-facing diagnosis flow with wiki pages, schemas,
-raw sources, expert examples, and treatment resources.
+This procedure describes the botanical reasoning sequence for grape leaf image
+diagnosis. It is a domain procedure, not an implementation workflow.
 
-## Procedure
+## Diagnostic Order
+
+Use this order before naming a disease:
 
 ```text
-1. User sends a grape leaf image or question.
-2. App assigns session, turn, and image IDs.
-3. VLM performs visual intake.
-4. Code validates visual intake JSON.
-5. App selects relevant wiki pages.
-6. Diagnosis step applies evidence sufficiency rules.
-7. Code validates diagnosis output JSON.
-8. If evidence is incomplete, ask for the exact missing image.
-9. If evidence is sufficient, return provisional or confirmed diagnosis.
-10. Save state for follow-up chat.
-11. If user asks about management or treatment, answer only when reviewed
-    treatment resource pages are selected.
-12. Store unresolved expert or source gaps in the manual source backlog.
+1. Confirm that the visible plant part is a leaf.
+2. Check whether the leaf is plausibly a grape leaf.
+3. Check whether image quality allows inspection of the symptomatic area.
+4. Identify the visible surface: adaxial, abaxial, mixed, uncertain, or not_leaf.
+5. Locate visible structures: blade, margin, midrib, primary veins, secondary
+   veins, petiole, apex, and base when visible.
+6. Separate normal grape leaf structures from abnormal signs.
+7. Describe abnormal signs without naming a disease too early.
+8. Compare the signs against disease-specific evidence requirements.
+9. Decide whether evidence is insufficient, provisional, or strong enough for a
+   more confident diagnosis.
+10. If evidence is missing, request the most useful next image or observation.
+11. Keep management or treatment advice separate from diagnosis unless reviewed
+    treatment resources are available.
 ```
 
-## Resource Links By Step
+## Observation Before Interpretation
+
+The first pass should be descriptive. Record what is visible:
 
 ```text
-Visual intake:
+leaf side
+image quality limits
+surface texture
+color changes
+fungal growth or lack of fungal growth
+lesion shape and edge
+relationship to veins
+distribution across the blade
+whether symptoms are local, scattered, vein-bounded, marginal, or widespread
+```
+
+Only after this observation pass should the assistant compare findings against
+candidate diseases.
+
+## Evidence Status
+
+Use conservative diagnostic status language:
+
+```text
+not_leaf
+not_enough_image_quality
+insufficient_botanical_evidence
+provisional_diagnosis
+strong_provisional_diagnosis
+reviewed_or_confirmed_diagnosis
+```
+
+A confirmed diagnosis should not be claimed from one weak image. Many grape leaf
+diseases need surface-specific evidence, lesion pattern, and differential
+comparison.
+
+## Missing Evidence
+
+When evidence is incomplete, ask for the single most useful next input:
+
+```text
+clearer image of the same surface
+adaxial surface of the same leaf
+abaxial surface of the same leaf
+close-up of the symptomatic area
+wider image showing distribution across the leaf
+image of another symptomatic leaf on the same plant
+human note about whether spots are powdery, fuzzy, raised, wet, dry, or necrotic
+```
+
+Do not ask broad lists of questions when one image would resolve the main
+uncertainty.
+
+## Resource Links By Diagnostic Need
+
+```text
+Observation sequence:
+  wiki/procedures/visual_observation_sequence.md
+
+Symptom localization:
+  wiki/procedures/symptom_localization_procedure.md
   wiki/grape_leaf/anatomy.md
   wiki/grape_leaf/leaf_surfaces.md
-  wiki/grape_leaf/image_guidance.md
-  schemas/visual_intake.schema.json
-  prompts/visual_intake_prompt.md
+  wiki/grape_leaf/normal_variation.md
 
 Evidence sufficiency:
   wiki/workflows/evidence_sufficiency.md
   wiki/workflows/front_back_request.md
   wiki/workflows/front_back_leaf_process.md
 
-Diagnosis decision:
+Differential diagnosis:
+  wiki/procedures/differential_diagnosis_procedure.md
   wiki/diagnosis/diagnosis_scripts.md
-  schemas/diagnosis_output.schema.json
-  prompts/diagnosis_decision_prompt.md
+  wiki/diseases/disease_page_template.md
 
-Dialogue:
-  wiki/dialogs/grape_leaf_diagnosis_dialog_tree.md
-  prompts/multiturn_chat_prompt.md
-
-Expert examples:
-  wiki/expert_information/expert_information_and_examples.md
-  wiki/expert_information/case_example_structure.md
-  dataset/examples/
-
-Treatment resources:
+Treatment boundary:
   wiki/treatment_resources/treatment_resource_policy.md
   wiki/treatment_resources/resource_index.md
-
-Source gaps:
-  system/source_requirements/manual_source_backlog.md
-  raw/sources/
 ```
 
-## Output Principle
-
-The system should keep three outputs separate:
-
-```text
-visual observations
-diagnostic interpretation
-management or treatment guidance
-```
-
-Visual observations can be made from the image. Diagnostic interpretation must
-use selected wiki rules. Management or treatment guidance requires reviewed
-treatment resources.
-
-See [Procedure Structures](procedure_structures.md) and
-[Diagnosis Scripts](../diagnosis/diagnosis_scripts.md).
+See [Visual Observation Sequence](visual_observation_sequence.md),
+[Symptom Localization Procedure](symptom_localization_procedure.md),
+[Differential Diagnosis Procedure](differential_diagnosis_procedure.md), and
+[Evidence Sufficiency](../workflows/evidence_sufficiency.md).
