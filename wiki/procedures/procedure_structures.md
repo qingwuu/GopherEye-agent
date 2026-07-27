@@ -2,7 +2,7 @@
 title: Botanical Procedure Types
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -19,7 +19,7 @@ label.
 ```text
 plant part
 grape leaf plausibility
-image quality
+diagnostic visibility
 leaf surface
 visible anatomical structures
 normal structures
@@ -35,8 +35,9 @@ Use when symptoms are visible and need to be described precisely.
 ```text
 surface: adaxial or abaxial
 blade region: apex, base, margin, interveinal area, near veins
-pattern: scattered, clustered, vein-bounded, marginal, widespread
-appearance: chlorotic, necrotic, powdery, fuzzy, water-soaked, raised, sunken
+pattern: scattered, clustered, vein-bounded, angular, marginal, widespread
+appearance: chlorotic, necrotic, oil spot, powdery, webby, cottony, fuzzy,
+  water-soaked, raised, sunken
 ```
 
 See [Symptom Localization Procedure](symptom_localization_procedure.md).
@@ -48,6 +49,7 @@ important evidence.
 
 ```text
 identify current surface
+decide whether the current single surface is already diagnostic
 decide whether the opposite surface is diagnostically important
 request the same leaf from the missing side when needed
 compare lesion position, vein relation, and surface growth across both sides
@@ -60,8 +62,8 @@ See [Front/Back Leaf Process](../workflows/front_back_leaf_process.md).
 Use when deciding whether the assistant has enough botanical evidence to answer.
 
 ```text
-quality sufficient or insufficient
-surface sufficient or missing
+diagnostic visibility sufficient or insufficient
+single surface sufficient or missing key evidence
 symptom description specific or vague
 differentials separated or still overlapping
 next image or observation needed

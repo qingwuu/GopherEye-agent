@@ -2,7 +2,7 @@
 title: Whole Grape Leaf Diagnosis Process
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -18,15 +18,15 @@ Use this order before naming a disease:
 ```text
 1. Confirm that the visible plant part is a leaf.
 2. Check whether the leaf is plausibly a grape leaf.
-3. Check whether image quality allows inspection of the symptomatic area.
+3. Check whether diagnostic visibility allows inspection of the symptomatic area.
 4. Identify the visible surface: adaxial, abaxial, mixed, uncertain, or not_leaf.
 5. Locate visible structures: blade, margin, midrib, primary veins, secondary
    veins, petiole, apex, and base when visible.
 6. Separate normal grape leaf structures from abnormal signs.
 7. Describe abnormal signs without naming a disease too early.
 8. Compare the signs against disease-specific evidence requirements.
-9. Decide whether evidence is insufficient, provisional, or strong enough for a
-   more confident diagnosis.
+9. Decide whether evidence is insufficient, sufficient from one surface,
+   provisional, or strong enough for a more confident diagnosis.
 10. If evidence is missing, request the most useful next image or observation.
 11. Keep management or treatment advice separate from diagnosis unless reviewed
     treatment resources are available.
@@ -39,6 +39,7 @@ The first pass should be descriptive. Record what is visible:
 ```text
 leaf side
 image quality limits
+nonblocking image limitations
 surface texture
 color changes
 fungal growth or lack of fungal growth
@@ -68,15 +69,20 @@ A confirmed diagnosis should not be claimed from one weak image. Many grape leaf
 diseases need surface-specific evidence, lesion pattern, and differential
 comparison.
 
+One image is not automatically weak just because it shows one side. A single
+surface can be sufficient when it shows high-signal disease-specific features
+such as powdery mildew colonies, webby mycelium, chasmothecia, downy mildew oil
+spots, angular vein-limited lesions, or underside cottony sporulation.
+
 ## Missing Evidence
 
 When evidence is incomplete, ask for the single most useful next input:
 
 ```text
 clearer image of the same surface
+close-up of the symptomatic area
 adaxial surface of the same leaf
 abaxial surface of the same leaf
-close-up of the symptomatic area
 wider image showing distribution across the leaf
 image of another symptomatic leaf on the same plant
 human note about whether spots are powdery, fuzzy, raised, wet, dry, or necrotic

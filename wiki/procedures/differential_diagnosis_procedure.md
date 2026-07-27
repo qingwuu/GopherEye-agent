@@ -2,7 +2,7 @@
 title: Differential Diagnosis Procedure
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -39,6 +39,13 @@ water-soaked tissue
 vein-bounded lesions
 powdery coating
 downy or fuzzy underside growth
+oil spots
+white-gray powdery colonies
+webby mycelium
+white cottony sporulation
+dark chasmothecia
+sparse or patchy sporulation
+vein tracking
 dark specks or fruiting bodies
 distortion or galls
 mechanical tearing
@@ -54,14 +61,16 @@ Surface evidence should be explicit:
 ```text
 upper-surface chlorosis with missing underside evidence
 upper-surface powdery growth
+upper-surface oil spots that may support downy mildew
 underside fuzzy growth
 same lesion visible on both sides
 surface uncertain because angle or lighting is poor
 ```
 
-If a likely candidate depends on underside evidence and only the upper surface
-is available, keep the diagnosis provisional and request the underside of the
-same leaf.
+If one surface shows high-signal disease-specific evidence, do not request the
+opposite surface automatically. If a likely candidate depends on missing surface
+evidence in this specific case, keep the diagnosis provisional and request the
+opposite side of the same leaf.
 
 ## Compare Lesion Geometry
 
@@ -92,6 +101,9 @@ old mechanical tears
 leaf folding or handling damage
 background material overlapping the leaf
 ```
+
+Treat these artifacts as non-disease explanations, but do not let nonblocking
+photo conditions dominate the answer when leaf evidence remains visible.
 
 ## Response Shape
 

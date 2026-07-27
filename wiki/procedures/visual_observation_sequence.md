@@ -2,7 +2,7 @@
 title: Visual Observation Sequence
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -39,7 +39,7 @@ If the image does not show a leaf, ask for a grape leaf image. If the image
 shows a leaf but grape identity is uncertain, say that grape evidence is
 insufficient.
 
-## Step 2: Check Image Quality
+## Step 2: Check Diagnostic Visibility
 
 Assess whether the symptomatic area can be inspected.
 
@@ -55,7 +55,9 @@ background objects mistaken for leaf symptoms
 ```
 
 If quality blocks inspection, ask for a clearer image of the same surface and
-same symptomatic area.
+same symptomatic area. If lighting, angle, or occlusion is present but the leaf
+surface, lesion geometry, or fungal growth remains inspectable, record it as a
+nonblocking limitation and continue diagnosis.
 
 ## Step 3: Identify Leaf Surface
 
@@ -111,6 +113,15 @@ chlorosis
 necrosis
 powdery surface growth
 downy or fuzzy underside growth
+oil spots
+angular vein-limited lesions
+white-gray powdery colonies
+webby mycelium
+white cottony sporulation
+dark chasmothecia
+sparse sporulation
+vein tracking
+superficial surface growth
 water-soaked areas
 vein-bounded spots
 yellow halos

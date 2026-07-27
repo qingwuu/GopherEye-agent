@@ -2,7 +2,7 @@
 title: Symptom Localization Procedure
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -43,9 +43,16 @@ marginal scorch
 diffuse chlorosis
 yellow halo
 necrotic center
+oil spot
+angular vein-limited lesion
 powdery coating
 fine web-like growth
+white-gray powdery colony
 downy or fuzzy growth
+white cottony sporulation
+dark chasmothecia
+sparse sporulation
+vein tracking
 raised or distorted tissue
 ```
 
@@ -64,6 +71,10 @@ impossible to compare because one side is missing
 Surface relationship is especially important when differentiating powdery
 surface growth, underside sporulation, chlorotic upper-surface lesions, and
 normal lower-surface vein relief.
+
+One missing side should be recorded as a limitation, not as automatic
+insufficiency. After localizing symptoms, decide whether the visible surface is
+already diagnostic for the disease-specific rule.
 
 ## Vein Relationship
 
