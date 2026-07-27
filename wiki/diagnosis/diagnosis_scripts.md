@@ -2,7 +2,7 @@
 title: Diagnosis Scripts
 page_type: procedure_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -43,6 +43,9 @@ dark, overexposed, or occluded. Please upload a clearer image of the same leaf
 surface with the affected area in focus.
 ```
 
+Do not use this script for minor lighting, angle, shadow, or partial occlusion
+when the symptomatic leaf area remains visible.
+
 ## Missing Surface Script
 
 Use when the opposite surface is diagnostically important:
@@ -58,6 +61,21 @@ If the missing side is known:
 Please upload the underside of the same leaf.
 Please upload the upper side of the same leaf.
 ```
+
+## Single-Surface Diagnosis Script
+
+Use when one visible side has high-signal disease-specific evidence:
+
+```text
+This side of the leaf shows enough specific evidence for a diagnosis. The
+opposite side could help confirm the pattern, but it is not required for this
+assessment.
+```
+
+For powdery mildew, this may include visible superficial white-gray powdery
+colonies, dusty conidia, webby mycelium, or dark chasmothecia. For downy
+mildew, this may include clear oil spots, angular vein-limited lesions, or
+white cottony underside sporulation.
 
 ## Differential Diagnosis Script
 

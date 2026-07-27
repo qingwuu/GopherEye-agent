@@ -2,7 +2,7 @@
 title: Expert Information And Examples
 page_type: expert_page
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -19,17 +19,18 @@ Useful expert information includes:
 ```text
 visual diagnostic rules
 front/back evidence requirements
+single-surface sufficiency rules
 common confusion pairs
 confidence boundaries
-image quality thresholds
+diagnostic visibility thresholds
 normal-variation cautions
 treatment or management caveats
 reviewed example annotations
 ```
 
-Do not use unsupported expert memory as final wiki truth. Store the original
-notes in the raw source folder first, then convert them into reviewed wiki
-claims.
+Do not use unsupported expert memory as settled truth. For now, simple updates
+may be written directly in `wiki/`; mark uncertainty clearly. Store original
+notes in `raw/` only when provenance or later review matters.
 
 ## Expert Claim Shape
 
@@ -41,8 +42,10 @@ disease_or_condition:
 visual_context:
 leaf_side:
 claim:
+fine_visual_features:
 supporting_visual_evidence:
 evidence_missing:
+single_surface_decision:
 confidence_boundary:
 common_confusions:
 example_case_ids:
@@ -61,6 +64,7 @@ image_ids:
 side_coverage:
 expert_label:
 expert_rationale:
+fine_visual_features:
 evidence_present:
 evidence_missing:
 expected_diagnosis_status:
@@ -80,6 +84,7 @@ follow-up dialog examples
 behavior eval oracles
 wiki Q&A examples
 assistant-output audit cases
+single-surface diagnostic cases
 ```
 
 Reviewed examples should use stable case IDs when possible. See
@@ -95,7 +100,7 @@ front/back process
 diagnosis script
 dialog tree branch
 treatment resource index, if treatment is discussed
-raw source record
+raw source record, if one exists
 ```
 
 See [Manual Source Backlog](../../system/source_requirements/manual_source_backlog.md) and

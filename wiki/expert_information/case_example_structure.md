@@ -2,7 +2,7 @@
 title: Case Example Structure
 page_type: expert_page
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -35,11 +35,13 @@ observation_id, if known
 image_ids
 side_coverage
 visible_symptoms
+fine_visual_features
 visible_structures
 expert_label
 expert_rationale
 evidence_present
 evidence_missing
+single_surface_decision
 differential_diagnoses
 expected_next_step
 review_status
@@ -64,7 +66,9 @@ expert explanation of what changed after the second side was provided
 ```text
 single_image_insufficient_evidence
 front_back_pair_sufficient_evidence
+single_surface_sufficient_evidence
 poor_quality_retry
+nonblocking_image_limitation
 normal_variation_not_disease
 differential_confusion
 treatment_question_requires_reviewed_resource

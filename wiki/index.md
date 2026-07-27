@@ -1,28 +1,3 @@
-# GopherEye Plant Knowledge Wiki
-
-This wiki is the curated domain knowledge layer for grape leaf diagnosis.
-It should contain plant, grape leaf, disease-evidence, procedure, routine, and
-reviewed resource knowledge.
-
-## Purpose
-
-The wiki answers app-facing questions from curated grape leaf knowledge:
-
-```text
-plant and grape leaf anatomy
-leaf surface and image quality routines
-visual observation sequence
-symptom localization routine
-diagnosis evidence sufficiency
-botanical differential diagnosis
-front/back image procedure
-expert case structure
-treatment resource guardrails
-```
-
-System implementation details live outside `wiki/` in `system/`, `schemas/`,
-`prompts/`, `tools/`, `flows/`, `Cloud_model/`, and `Frontier_model/`.
-
 ## Grape Leaf Foundation
 
 - [Grape Leaf Anatomy](grape_leaf/anatomy.md)
@@ -45,6 +20,8 @@ System implementation details live outside `wiki/` in `system/`, `schemas/`,
 
 ## Expert Knowledge And Sources
 
+- [Powdery Mildew](diseases/powdery_mildew.md)
+- [Downy Mildew](diseases/downy_mildew.md)
 - [Expert Information And Examples](expert_information/expert_information_and_examples.md)
 - [Case Example Structure](expert_information/case_example_structure.md)
 - [Disease Page Template](diseases/disease_page_template.md)

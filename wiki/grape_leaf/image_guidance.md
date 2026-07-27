@@ -2,7 +2,7 @@
 title: Grape Leaf Image Guidance
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-12
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -20,8 +20,12 @@ the relevant surface: adaxial or abaxial
 the symptomatic region in focus
 enough surrounding lamina to judge pattern
 primary veins if lesion geometry matters
-natural or even lighting
+lighting that does not hide symptoms
 ```
+
+The goal is diagnostic visibility, not photographic neatness. A useful image can
+have imperfect lighting, angle, background, or partial occlusion if the relevant
+leaf surface and symptomatic area remain inspectable.
 
 ## Recommended Image Set
 
@@ -47,11 +51,24 @@ only petiole or background is visible
 the side is impossible to identify
 ```
 
+Do not request a better image when the limitation is nonblocking:
+
+```text
+minor shadow away from the lesion
+uneven lighting that does not hide color or surface texture
+partial occlusion outside the symptomatic region
+background clutter that is not being confused with leaf symptoms
+slight angle if surface side and lesion geometry remain clear
+```
+
+Record nonblocking limitations in notes, but keep the diagnosis focused on leaf
+features.
+
 ## User-Facing Request Template
 
 ```text
 Please upload a clear image of the underside of the same leaf. Keep the leaf in
-focus, include the area with visible spots, and use even lighting if possible.
+focus and include the area with visible spots.
 ```
 
 See [Front/Back Image Request](../workflows/front_back_request.md),
