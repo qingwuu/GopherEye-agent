@@ -3,6 +3,7 @@ title: Downy Mildew
 page_type: disease_page
 review_status: needs_review
 last_updated: 2026-07-27
+review_status: draft
 sources:
   - https://cals.cornell.edu/integrated-pest-management/grapevine-downy-mildew-plasmopara-viticola-fruit-fact-sheet
   - https://agriculture.canada.ca/en/agricultural-production/crop-protection/agricultural-pest-management-resources/identification-guide-major-diseases-grapes

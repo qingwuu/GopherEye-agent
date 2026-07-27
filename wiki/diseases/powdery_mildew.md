@@ -3,6 +3,7 @@ title: Powdery Mildew
 page_type: disease_page
 review_status: needs_review
 last_updated: 2026-07-27
+review_status: draft
 sources:
   - https://ipm.ucanr.edu/agriculture/grape/powdery-mildew/
   - https://cals.cornell.edu/integrated-pest-management/outreach-education/fact-sheets/grapevine-powdery-mildew-erysiphe-necator-fruit-fact-sheet
