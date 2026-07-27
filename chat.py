@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -143,14 +144,12 @@ ENVELOPE_SCHEMA_PROFILES: Dict[str, Dict[str, Any]] = {
     "chat": {
         "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
         "role_profile": "chat",
-        "requires_agent_trace": False,
         "requires_visual_memory": False,
         "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
     "frontier_visual_intake_or_diagnosis": {
         "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
         "role_profile": "frontier_visual_intake_or_diagnosis",
-        "requires_agent_trace": True,
         "requires_visual_memory": True,
         "requires_image_ordered_visual_intakes": True,
         "payload_schemas": [
@@ -161,14 +160,12 @@ ENVELOPE_SCHEMA_PROFILES: Dict[str, Dict[str, Any]] = {
     "frontier_grape_leaf_chat": {
         "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
         "role_profile": "frontier_grape_leaf_chat",
-        "requires_agent_trace": True,
         "requires_visual_memory": False,
         "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
     "frontier_data_management": {
         "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
         "role_profile": "frontier_data_management",
-        "requires_agent_trace": True,
         "requires_visual_memory": False,
         "payload_schemas": ["schemas/base/memory_update.schema.json"],
         "forbidden_actions": ["write_wiki", "write_ground_truth"],
@@ -176,14 +173,12 @@ ENVELOPE_SCHEMA_PROFILES: Dict[str, Dict[str, Any]] = {
     "frontier_knowledge_management": {
         "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
         "role_profile": "frontier_knowledge_management",
-        "requires_agent_trace": True,
         "requires_visual_memory": False,
         "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
     "frontier_general_project_chat": {
         "schema_name": ASSISTANT_ENVELOPE_SCHEMA_NAME,
         "role_profile": "frontier_general_project_chat",
-        "requires_agent_trace": True,
         "requires_visual_memory": False,
         "payload_schemas": ["schemas/base/memory_update.schema.json"],
     },
@@ -251,6 +246,323 @@ def validate_payload_schema(value: Any, schema_name: str, *, label: str) -> List
     return errors
 
 
+QUALITY_OVERALL_SYNONYMS = {
+    "excellent": "good",
+    "clear": "good",
+    "good": "good",
+    "fair": "usable_with_caution",
+    "usable": "usable_with_caution",
+    "usable with caution": "usable_with_caution",
+    "usable_with_caution": "usable_with_caution",
+    "limited": "usable_with_caution",
+    "poor": "usable_with_caution",
+    "bad": "unusable",
+    "unusable": "unusable",
+}
+
+QUALITY_ISSUES = {
+    "blurry",
+    "dark",
+    "overexposed",
+    "poor_angle",
+    "occluded",
+    "low_resolution",
+    "duplicate",
+}
+STRUCTURES = {
+    "blade",
+    "lamina",
+    "lobes",
+    "serrated_margin",
+    "petiole",
+    "midrib",
+    "primary_veins",
+    "secondary_veins",
+    "apex",
+    "leaf_base",
+    "adaxial_surface",
+    "abaxial_surface",
+}
+SYMPTOMS = {
+    "chlorosis",
+    "necrosis",
+    "powdery_growth",
+    "downy_fuzzy_growth",
+    "vein_bounded_spots",
+    "edge_curling",
+    "wilting",
+    "healthy_uniform_green",
+    "unknown_spots",
+    "lesion",
+    "water_soaked_area",
+    "yellow_halo",
+    "insect_damage",
+    "gall",
+}
+
+SIDE_LABEL_SYNONYMS = {
+    "upper": "adaxial",
+    "upper side": "adaxial",
+    "top": "adaxial",
+    "top side": "adaxial",
+    "front": "adaxial",
+    "adaxial": "adaxial",
+    "lower": "abaxial",
+    "lower side": "abaxial",
+    "underside": "abaxial",
+    "under side": "abaxial",
+    "back": "abaxial",
+    "abaxial": "abaxial",
+    "both": "mixed",
+    "mixed": "mixed",
+    "uncertain": "uncertain",
+    "unknown": "uncertain",
+    "not leaf": "not_leaf",
+    "not_leaf": "not_leaf",
+}
+
+STRUCTURE_SYNONYMS = {
+    "leaf blade": "blade",
+    "blade": "blade",
+    "lamina": "lamina",
+    "lobe": "lobes",
+    "lobes": "lobes",
+    "lobed margin": "lobes",
+    "serrated margin": "serrated_margin",
+    "serrated_margin": "serrated_margin",
+    "margin": "serrated_margin",
+    "petiole": "petiole",
+    "midrib": "midrib",
+    "primary vein": "primary_veins",
+    "primary veins": "primary_veins",
+    "primary_veins": "primary_veins",
+    "secondary vein": "secondary_veins",
+    "secondary veins": "secondary_veins",
+    "secondary_veins": "secondary_veins",
+    "apex": "apex",
+    "tip": "apex",
+    "base": "leaf_base",
+    "leaf base": "leaf_base",
+    "leaf_base": "leaf_base",
+    "adaxial surface": "adaxial_surface",
+    "adaxial_surface": "adaxial_surface",
+    "upper surface": "adaxial_surface",
+    "abaxial surface": "abaxial_surface",
+    "abaxial_surface": "abaxial_surface",
+    "lower surface": "abaxial_surface",
+    "underside": "abaxial_surface",
+}
+
+
+def _normalized_text(value: Any) -> str:
+    text = str(value).strip().lower().replace("_", " ")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _as_list(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _append_unique(items: List[str], value: Any) -> None:
+    if value is None:
+        return
+    text = str(value).strip()
+    if text and text not in items:
+        items.append(text)
+
+
+def normalize_quality_overall(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = _normalized_text(value)
+    if text in QUALITY_OVERALL_SYNONYMS:
+        return QUALITY_OVERALL_SYNONYMS[text]
+    if "unusable" in text:
+        return "unusable"
+    if any(token in text for token in ["fair", "limited", "usable", "partial", "caution"]):
+        return "usable_with_caution"
+    if any(token in text for token in ["good", "clear", "sharp", "excellent"]):
+        return "good"
+    return "usable_with_caution"
+
+
+def normalize_side_label(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = _normalized_text(value)
+    return SIDE_LABEL_SYNONYMS.get(text)
+
+
+def canonical_quality_issues(value: Any) -> tuple[List[str], List[str]]:
+    canonical: List[str] = []
+    notes: List[str] = []
+    for item in _as_list(value):
+        raw = str(item).strip()
+        text = _normalized_text(raw)
+        found: List[str] = []
+        if raw in QUALITY_ISSUES:
+            found.append(raw)
+        if any(token in text for token in ["blur", "out of focus", "not sharp"]):
+            found.append("blurry")
+        if any(token in text for token in ["dark", "shadow", "underexposed"]):
+            found.append("dark")
+        if any(token in text for token in ["glare", "bright", "overexposed", "sunlight", "washed", "dappled", "uneven lighting"]):
+            found.append("overexposed")
+        if any(token in text for token in ["angle", "tilted", "perspective"]):
+            found.append("poor_angle")
+        if any(token in text for token in ["occluded", "overlap", "covered", "blocked", "partial occlusion"]):
+            found.append("occluded")
+        if any(token in text for token in ["low resolution", "low detail", "limited detail", "close up", "closeup", "fine lesion detail"]):
+            found.append("low_resolution")
+        if "duplicate" in text:
+            found.append("duplicate")
+        for issue in found:
+            _append_unique(canonical, issue)
+        if raw and (not found or raw not in QUALITY_ISSUES):
+            _append_unique(notes, raw)
+    return canonical, notes
+
+
+def canonical_structures(value: Any) -> tuple[List[str], List[str]]:
+    canonical: List[str] = []
+    notes: List[str] = []
+    for item in _as_list(value):
+        raw = str(item).strip()
+        text = _normalized_text(raw)
+        mapped = STRUCTURE_SYNONYMS.get(text)
+        if mapped in STRUCTURES:
+            _append_unique(canonical, mapped)
+            if raw != mapped:
+                _append_unique(notes, raw)
+        else:
+            _append_unique(notes, raw)
+    return canonical, notes
+
+
+def canonical_symptoms(value: Any) -> tuple[List[str], List[str]]:
+    canonical: List[str] = []
+    notes: List[str] = []
+    for item in _as_list(value):
+        raw = str(item).strip()
+        text = _normalized_text(raw)
+        found: List[str] = []
+        if raw in SYMPTOMS:
+            found.append(raw)
+        if any(token in text for token in ["chlorosis", "chlorotic", "yellow", "pale", "mottling", "mottle", "discoloration"]):
+            found.append("chlorosis")
+        if any(token in text for token in ["necrosis", "necrotic", "brown", "blackened", "dead tissue"]):
+            found.append("necrosis")
+        if "powdery" in text:
+            found.append("powdery_growth")
+        if any(token in text for token in ["downy", "fuzzy", "fuzz", "sporulation"]):
+            found.append("downy_fuzzy_growth")
+        if any(token in text for token in ["vein bounded", "vein limited", "angular"]):
+            found.append("vein_bounded_spots")
+        if any(token in text for token in ["curl", "curled", "curling"]):
+            found.append("edge_curling")
+        if any(token in text for token in ["wilt", "wilting"]):
+            found.append("wilting")
+        if any(token in text for token in ["healthy", "uniform green", "no visible symptoms"]):
+            found.append("healthy_uniform_green")
+        if any(token in text for token in ["spot", "speck", "dot", "dark mark"]):
+            found.append("unknown_spots")
+        if any(token in text for token in ["lesion", "mark"]):
+            found.append("lesion")
+        if "water soaked" in text or "water-soaked" in str(item).lower():
+            found.append("water_soaked_area")
+        if "halo" in text:
+            found.append("yellow_halo")
+        if "insect" in text:
+            found.append("insect_damage")
+        if "gall" in text:
+            found.append("gall")
+        for symptom in found:
+            _append_unique(canonical, symptom)
+        if raw and (not found or raw not in SYMPTOMS):
+            _append_unique(notes, raw)
+    return canonical, notes
+
+
+def normalize_visual_intake_payload(item: Any) -> Any:
+    if not isinstance(item, dict):
+        return item
+    normalized = copy.deepcopy(item)
+
+    image_quality = normalized.get("image_quality")
+    if isinstance(image_quality, dict):
+        overall = normalize_quality_overall(image_quality.get("overall"))
+        if overall is not None:
+            image_quality["overall"] = overall
+        issues, notes = canonical_quality_issues(image_quality.get("issues"))
+        existing_notes = [str(note) for note in _as_list(image_quality.get("quality_notes")) if str(note).strip()]
+        image_quality["issues"] = issues
+        if notes or existing_notes:
+            image_quality["quality_notes"] = existing_notes + [note for note in notes if note not in existing_notes]
+
+    side_assessment = normalized.get("side_assessment")
+    if isinstance(side_assessment, dict):
+        side_label = normalize_side_label(side_assessment.get("side_label"))
+        if side_label is not None:
+            side_assessment["side_label"] = side_label
+
+    if "visible_structures" in normalized:
+        structures, notes = canonical_structures(normalized.get("visible_structures"))
+        existing_notes = [str(note) for note in _as_list(normalized.get("visible_structure_notes")) if str(note).strip()]
+        normalized["visible_structures"] = structures
+        if notes or existing_notes:
+            normalized["visible_structure_notes"] = existing_notes + [note for note in notes if note not in existing_notes]
+
+    if "visible_symptoms" in normalized:
+        symptoms, notes = canonical_symptoms(normalized.get("visible_symptoms"))
+        existing_notes = [str(note) for note in _as_list(normalized.get("visible_symptom_notes")) if str(note).strip()]
+        normalized["visible_symptoms"] = symptoms
+        if notes or existing_notes:
+            normalized["visible_symptom_notes"] = existing_notes + [note for note in notes if note not in existing_notes]
+
+    return normalized
+
+
+def normalize_known_image_update_payload(item: Any) -> Any:
+    if not isinstance(item, dict):
+        return item
+    normalized = copy.deepcopy(item)
+    side_label = normalize_side_label(normalized.get("side_label"))
+    if side_label is not None or normalized.get("side_label") is not None:
+        normalized["side_label"] = side_label
+    quality = normalize_quality_overall(normalized.get("quality_overall"))
+    if quality is not None or normalized.get("quality_overall") is not None:
+        normalized["quality_overall"] = quality
+    return normalized
+
+
+def normalize_assistant_envelope_payload(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    normalized = copy.deepcopy(value)
+    # Routing and selected agent path are code-owned turn metadata, not model-owned memory.
+    normalized.pop("agent_trace", None)
+    memory_update = normalized.get("memory_update")
+    if not isinstance(memory_update, dict):
+        return normalized
+
+    if isinstance(memory_update.get("known_image_updates"), list):
+        memory_update["known_image_updates"] = [
+            normalize_known_image_update_payload(item)
+            for item in memory_update.get("known_image_updates", [])
+        ]
+    if isinstance(memory_update.get("visual_intakes"), list):
+        memory_update["visual_intakes"] = [
+            normalize_visual_intake_payload(item)
+            for item in memory_update.get("visual_intakes", [])
+        ]
+    return normalized
+
+
 def validate_base_payloads(memory_update: Dict[str, Any], profile: Dict[str, Any]) -> List[str]:
     errors: List[str] = []
 
@@ -288,6 +600,10 @@ def validate_base_payloads(memory_update: Dict[str, Any], profile: Dict[str, Any
     return errors
 
 
+def contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", text))
+
+
 def validate_assistant_envelope(
     value: Any,
     *,
@@ -302,29 +618,13 @@ def validate_assistant_envelope(
     assistant_message = value.get("assistant_message")
     if not isinstance(assistant_message, str) or not assistant_message.strip():
         errors.append("assistant_message must be a non-empty string.")
+    elif contains_cjk(assistant_message):
+        errors.append("assistant_message must be written in English only.")
 
     memory_update = value.get("memory_update")
     if not isinstance(memory_update, dict):
         errors.append("memory_update must be an object.")
         memory_update = {}
-
-    if profile.get("requires_agent_trace"):
-        agent_trace = value.get("agent_trace")
-        if not isinstance(agent_trace, dict):
-            errors.append("agent_trace must be an object for this role.")
-        else:
-            task_type = agent_trace.get("task_type")
-            selected_agent_path = agent_trace.get("selected_agent_path")
-            if not isinstance(task_type, str) or not task_type.strip():
-                errors.append("agent_trace.task_type must be a non-empty string.")
-            elif expected_task_type and task_type != expected_task_type:
-                errors.append(
-                    f"agent_trace.task_type must be {expected_task_type!r}, got {task_type!r}."
-                )
-            if not isinstance(selected_agent_path, list) or not all(
-                isinstance(item, str) for item in selected_agent_path
-            ):
-                errors.append("agent_trace.selected_agent_path must be a list of strings.")
 
     for key in MEMORY_UPDATE_CORE_KEYS:
         if key not in memory_update:
@@ -389,9 +689,9 @@ Validation errors:
 {json.dumps(list(errors), ensure_ascii=False, indent=2)}
 
 The corrected response must have:
-- assistant_message: non-empty natural language string for the user.
+- assistant_message: non-empty English natural language string for the user.
 - memory_update: structured object for session memory.
-- agent_trace: required only when the schema profile includes it.
+- no agent_trace; route and selected agent path are code-owned turn metadata.
 - no code-owned fields inside memory_update, including session_id, turn_id,
   image_id, image_path, visual_intake_id, created_at, or updated_at.
 
@@ -406,10 +706,13 @@ Return corrected JSON now:"""
 
 def fallback_assistant_message(parsed: Dict[str, Any] | None, raw: str) -> str:
     if parsed and isinstance(parsed.get("assistant_message"), str) and parsed["assistant_message"].strip():
-        return parsed["assistant_message"].strip()
+        candidate = parsed["assistant_message"].strip()
+        if not contains_cjk(candidate):
+            return candidate
     stripped = raw.strip()
     if (
         not stripped
+        or contains_cjk(stripped)
         or stripped.startswith(("{", "[", "```"))
         or '"assistant_message"' in stripped
         or '"memory_update"' in stripped
@@ -446,7 +749,8 @@ def resolve_assistant_envelope(
 ) -> Dict[str, Any]:
     attempts = []
     parsed = parse_json_object(raw)
-    errors = validate_assistant_envelope(parsed, role=role, expected_task_type=expected_task_type)
+    normalized_parsed = normalize_assistant_envelope_payload(parsed)
+    errors = validate_assistant_envelope(normalized_parsed, role=role, expected_task_type=expected_task_type)
     attempts.append(
         {
             "attempt": "initial",
@@ -457,7 +761,7 @@ def resolve_assistant_envelope(
         }
     )
     final_raw = raw
-    final_parsed = parsed
+    final_parsed = normalized_parsed
     final_errors = errors
 
     if errors and repair_callback is not None:
@@ -470,8 +774,9 @@ def resolve_assistant_envelope(
         )
         repair_raw = repair_callback(repair_prompt)
         repair_parsed = parse_json_object(repair_raw)
+        normalized_repair_parsed = normalize_assistant_envelope_payload(repair_parsed)
         repair_errors = validate_assistant_envelope(
-            repair_parsed,
+            normalized_repair_parsed,
             role=role,
             expected_task_type=expected_task_type,
         )
@@ -485,18 +790,19 @@ def resolve_assistant_envelope(
             }
         )
         final_raw = repair_raw
-        final_parsed = repair_parsed
+        final_parsed = normalized_repair_parsed
         final_errors = repair_errors
 
     envelope_valid = not final_errors
     if envelope_valid and final_parsed:
+        final_normalized_raw = json.dumps(final_parsed, ensure_ascii=False, indent=2)
         return {
             "assistant_message": final_parsed["assistant_message"].strip(),
             "memory_update": final_parsed["memory_update"],
             "parsed_json": True,
             "envelope_valid": True,
             "fallback_used": False,
-            "final_raw": final_raw,
+            "final_raw": final_normalized_raw,
             "final_parsed": final_parsed,
             "validation_errors": [],
             "attempts": attempts,
@@ -782,7 +1088,9 @@ def normalize_visual_intakes(
         "image_quality",
         "side_assessment",
         "visible_symptoms",
+        "visible_symptom_notes",
         "visible_structures",
+        "visible_structure_notes",
         "symptom_locations",
         "candidate_diseases",
         "intake_summary",
@@ -1172,7 +1480,7 @@ def build_chat_prompt(
 
 You must return ONLY valid JSON with this exact top-level shape:
 {{
-  "assistant_message": "short professional answer to the user",
+  "assistant_message": "short professional English answer to the user",
   "memory_update": {{
     "summary": "compact memory of the session so far",
     "user_goal": null,
@@ -1188,10 +1496,12 @@ You must return ONLY valid JSON with this exact top-level shape:
       {{
         "image_order": 1,
         "is_leaf_image": true,
-        "image_quality": {{"overall": "good", "issues": []}},
+        "image_quality": {{"overall": "good", "issues": [], "quality_notes": []}},
         "side_assessment": {{"side_label": "uncertain", "confidence": 0.0}},
         "visible_symptoms": [],
+        "visible_symptom_notes": [],
         "visible_structures": [],
+        "visible_structure_notes": [],
         "symptom_locations": [],
         "candidate_diseases": [],
         "intake_summary": "short visual evidence summary"
@@ -1214,6 +1524,7 @@ Use only:
 
 Rules:
 - Keep the assistant_message short, professional, and app-appropriate.
+- Write assistant_message in English only.
 - Do not invent visual evidence that is not in memory, transcript, or current message.
 - If evidence is incomplete, keep uncertainty visible.
 - If another image is needed, name the exact next image.
@@ -1228,6 +1539,10 @@ Rules:
   visual_intake_id, created_at, or updated_at fields.
 - For image-specific updates, use only image_order from the attached image
   manifest. The app code will map image_order to image_id and assign stable IDs.
+- Do not output agent_trace. Route and selected agent path are app-owned metadata.
+- Use canonical values when obvious, and put natural-language botanical detail in
+  quality_notes, visible_symptom_notes, visible_structure_notes, evidence_present,
+  evidence_missing, or intake_summary.
 
 Current short-term memory JSON:
 {json.dumps(session.get("short_term_memory", default_memory()), ensure_ascii=False, indent=2)}
