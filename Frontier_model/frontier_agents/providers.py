@@ -69,17 +69,11 @@ class EchoBackend(ModelBackend):
         image_refs: Sequence[str] = (),
         max_output_tokens: int = 900,
     ) -> ModelResponse:
-        route = self._route_from_prompt(prompt)
         text = {
             "assistant_message": (
                 "Echo backend received the request. Select a real profile such as "
                 "openai_frontier, anthropic_frontier, kimi, or qwen_local for model output."
             ),
-            "agent_trace": {
-                "task_type": route.get("task_type", "echo"),
-                "selected_agent_path": route.get("selected_agent_path", ["router", "echo"]),
-                "needs_follow_up": False,
-            },
             "memory_update": {
                 "summary": "Echo test run; no model diagnosis was performed.",
                 "user_goal": None,

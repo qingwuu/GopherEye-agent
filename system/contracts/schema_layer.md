@@ -31,7 +31,6 @@ easier debugging
 schemas/visual_intake.schema.json
 schemas/diagnosis_output.schema.json
 schemas/envelopes/assistant_envelope.schema.json
-schemas/base/agent_trace.schema.json
 schemas/base/known_image_update.schema.json
 schemas/base/memory_update.schema.json
 schemas/role_profiles/assistant_role_profiles.json
@@ -57,7 +56,6 @@ The current runtime uses one thin top-level envelope:
 ```text
 assistant_envelope
   assistant_message
-  optional agent_trace
   memory_update
 ```
 
@@ -68,17 +66,20 @@ chat
   assistant_envelope + memory_update
 
 frontier_visual_intake_or_diagnosis
-  assistant_envelope + agent_trace + memory_update
+  assistant_envelope + memory_update
   visual_intakes must satisfy schemas/visual_intake.schema.json
   visual_intakes must use image_order, not image_id or image_path
 
 frontier_data_management
-  assistant_envelope + agent_trace + memory_update
+  assistant_envelope + memory_update
   app code forbids direct wiki or ground-truth writes
 
 frontier_grape_leaf_chat / frontier_knowledge_management / frontier_general_project_chat
-  assistant_envelope + agent_trace + memory_update
+  assistant_envelope + memory_update
 ```
+
+Route, selected agent path, context label, selected pages, and tool/runtime trace
+are code-owned turn metadata stored outside the model-owned JSON envelope.
 
 The older role-specific envelope schema files have been removed. Role-specific
 requirements now live in `schemas/role_profiles/assistant_role_profiles.json`

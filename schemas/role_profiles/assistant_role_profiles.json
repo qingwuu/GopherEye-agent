@@ -3,12 +3,10 @@
   "envelope_schema": "schemas/envelopes/assistant_envelope.schema.json",
   "roles": {
     "chat": {
-      "requires_agent_trace": false,
       "required_memory_fields": [],
       "payload_schemas": ["schemas/base/memory_update.schema.json"]
     },
     "frontier_visual_intake_or_diagnosis": {
-      "requires_agent_trace": true,
       "required_memory_fields": ["known_image_updates", "visual_intakes"],
       "payload_schemas": [
         "schemas/base/memory_update.schema.json",
@@ -17,23 +15,19 @@
       "requires_image_ordered_visual_intakes": true
     },
     "frontier_grape_leaf_chat": {
-      "requires_agent_trace": true,
       "required_memory_fields": [],
       "payload_schemas": ["schemas/base/memory_update.schema.json"]
     },
     "frontier_data_management": {
-      "requires_agent_trace": true,
       "required_memory_fields": [],
       "payload_schemas": ["schemas/base/memory_update.schema.json"],
       "forbidden_actions": ["write_wiki", "write_ground_truth"]
     },
     "frontier_knowledge_management": {
-      "requires_agent_trace": true,
       "required_memory_fields": [],
       "payload_schemas": ["schemas/base/memory_update.schema.json"]
     },
     "frontier_general_project_chat": {
-      "requires_agent_trace": true,
       "required_memory_fields": [],
       "payload_schemas": ["schemas/base/memory_update.schema.json"]
     }

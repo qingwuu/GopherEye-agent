@@ -268,11 +268,6 @@ def build_frontier_prompt(
 Return ONLY valid JSON with this exact top-level shape:
 {{
   "assistant_message": "short app-ready English answer to the user",
-  "agent_trace": {{
-    "task_type": "{route['task_type']}",
-    "selected_agent_path": {json.dumps(route['selected_agent_path'])},
-    "needs_follow_up": false
-  }},
   "memory_update": {{
     "summary": "compact memory of the session so far",
     "user_goal": null,
@@ -288,10 +283,12 @@ Return ONLY valid JSON with this exact top-level shape:
       {{
         "image_order": 1,
         "is_leaf_image": true,
-        "image_quality": {{"overall": "good", "issues": []}},
+        "image_quality": {{"overall": "good", "issues": [], "quality_notes": []}},
         "side_assessment": {{"side_label": "uncertain", "confidence": 0.0}},
         "visible_symptoms": [],
+        "visible_symptom_notes": [],
         "visible_structures": [],
+        "visible_structure_notes": [],
         "symptom_locations": [],
         "candidate_diseases": [],
         "intake_summary": "short visual evidence summary"
@@ -327,6 +324,11 @@ Rules:
 - Do not create or modify session_id, turn_id, image_id, image_path,
   visual_intake_id, created_at, or updated_at fields.
 - For image-specific updates, use only image_order from the attached image manifest.
+- Do not output agent_trace. Route, selected agent path, and context metadata are
+  recorded by app code outside the model JSON.
+- Use canonical values when obvious, and put natural-language botanical detail in
+  quality_notes, visible_symptom_notes, visible_structure_notes, evidence_present,
+  evidence_missing, or intake_summary.
 
 Model profile:
 {profile_name}

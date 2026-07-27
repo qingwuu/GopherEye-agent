@@ -43,6 +43,12 @@
               "duplicate"
             ]
           }
+        },
+        "quality_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -84,6 +90,12 @@
         ]
       }
     },
+    "visible_symptom_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "visible_structures": {
       "type": "array",
       "items": {
@@ -102,6 +114,12 @@
           "adaxial_surface",
           "abaxial_surface"
         ]
+      }
+    },
+    "visible_structure_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     },
     "symptom_locations": {

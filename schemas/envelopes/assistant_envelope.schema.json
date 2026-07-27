@@ -11,16 +11,6 @@
       "type": "string",
       "minLength": 1
     },
-    "agent_trace": {
-      "anyOf": [
-        {
-          "$ref": "../base/agent_trace.schema.json"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
     "memory_update": {
       "$ref": "../base/memory_update.schema.json"
     }
