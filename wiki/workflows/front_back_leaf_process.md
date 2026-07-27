@@ -2,7 +2,7 @@
 title: Front/Back Leaf Process
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -32,17 +32,32 @@ abaxial surface:
 One surface may suggest a candidate, while the opposite surface may strengthen
 or weaken that interpretation.
 
+Both sides are not a universal prerequisite. For some cases, one surface shows
+enough disease-specific evidence for diagnosis:
+
+```text
+powdery mildew:
+  clear superficial powdery colonies, webby mycelium, dusty conidia, or dark
+  chasmothecia on either surface
+
+downy mildew:
+  clear adaxial oil spots or angular vein-limited lesions, or clear abaxial
+  white cottony/downy sporulation
+```
+
 ## Comparison Sequence
 
 ```text
 1. Identify the surface in the first image.
 2. Describe visible symptoms on that surface.
-3. Decide whether the opposite surface is needed for the suspected condition.
-4. If needed, request the same leaf from the opposite side.
-5. When both sides are available, compare lesion location and pattern.
-6. Check whether symptoms align across the two surfaces.
-7. Note any surface-specific fungal growth or absence of growth.
-8. Update the evidence status and differential diagnosis.
+3. Decide whether the visible single surface is already diagnostic for the
+   suspected condition.
+4. If not, decide whether the opposite surface is needed.
+5. If needed, request the same leaf from the opposite side.
+6. When both sides are available, compare lesion location and pattern.
+7. Check whether symptoms align across the two surfaces.
+8. Note any surface-specific fungal growth or absence of growth.
+9. Update the evidence status and differential diagnosis.
 ```
 
 ## Same-Leaf Pair Requirement
@@ -80,11 +95,18 @@ whether one side explains the other
 
 ## Request Language
 
+When one side is sufficient:
+
+```text
+This side of the leaf shows enough disease-specific evidence for a diagnosis.
+The opposite side is optional and would mainly help confirm the pattern.
+```
+
 If the upper surface is shown:
 
 ```text
 Please upload the underside of the same leaf. Keep the spotted area in frame and
-use even lighting.
+keep the symptomatic area visible.
 ```
 
 If the underside is shown:
