@@ -46,6 +46,30 @@
         "type": "string"
       }
     },
+    "evidence_sufficiency": {
+      "type": "string",
+      "enum": [
+        "sufficient",
+        "sufficient_single_surface",
+        "sufficient_both_surfaces",
+        "sufficient_with_nonblocking_limitations",
+        "insufficient_need_adaxial",
+        "insufficient_need_abaxial",
+        "insufficient_need_opposite_surface",
+        "insufficient_need_better_quality",
+        "uncertain"
+      ]
+    },
+    "single_surface_assessment": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "nonblocking_image_limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "recommended_next_image": {
       "type": ["string", "null"]
     },

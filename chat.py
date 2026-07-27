@@ -29,6 +29,15 @@ from src.single_model_wiki.core import (
 
 
 DEFAULT_SESSION_DIR = ROOT_DIR / "sessions"
+CORE_WIKI_CONTEXT_FOR_IMAGES = [
+    "procedures/whole_diagnosis_process.md",
+    "procedures/visual_observation_sequence.md",
+    "procedures/symptom_localization_procedure.md",
+    "workflows/evidence_sufficiency.md",
+    "workflows/front_back_leaf_process.md",
+    "diseases/powdery_mildew.md",
+    "diseases/downy_mildew.md",
+]
 
 
 def default_memory() -> Dict[str, Any]:
@@ -40,6 +49,9 @@ def default_memory() -> Dict[str, Any]:
         "visual_intakes": [],
         "evidence_present": [],
         "evidence_missing": [],
+        "evidence_sufficiency": "uncertain",
+        "single_surface_assessment": None,
+        "nonblocking_image_limitations": [],
         "recommended_next_image": None,
         "allowed_follow_up_questions": [],
         "open_questions": [],
@@ -125,6 +137,7 @@ MEMORY_UPDATE_LIST_KEYS = [
     "visual_intakes",
     "evidence_present",
     "evidence_missing",
+    "nonblocking_image_limitations",
     "allowed_follow_up_questions",
     "open_questions",
 ]
@@ -288,6 +301,16 @@ SYMPTOMS = {
     "necrosis",
     "powdery_growth",
     "downy_fuzzy_growth",
+    "oil_spots",
+    "angular_vein_limited_lesions",
+    "white_gray_powdery_colonies",
+    "webby_mycelium",
+    "white_cottony_sporulation",
+    "dark_chasmothecia",
+    "sparse_sporulation",
+    "vein_tracking",
+    "superficial_surface_growth",
+    "metallic_sheen",
     "vein_bounded_spots",
     "edge_curling",
     "wilting",
@@ -457,10 +480,30 @@ def canonical_symptoms(value: Any) -> tuple[List[str], List[str]]:
             found.append("chlorosis")
         if any(token in text for token in ["necrosis", "necrotic", "brown", "blackened", "dead tissue"]):
             found.append("necrosis")
+        if "oil spot" in text or "oily spot" in text or "greasy lesion" in text or "greasy spot" in text:
+            found.append("oil_spots")
+        if any(token in text for token in ["angular", "vein limited", "vein-limited", "vein bounded", "vein-bounded"]):
+            found.append("angular_vein_limited_lesions")
         if "powdery" in text:
             found.append("powdery_growth")
+            if any(token in text for token in ["white", "gray", "grey", "colony", "colonies", "dusty", "floury"]):
+                found.append("white_gray_powdery_colonies")
+        if any(token in text for token in ["webby", "mycelium", "mycelial"]):
+            found.append("webby_mycelium")
         if any(token in text for token in ["downy", "fuzzy", "fuzz", "sporulation"]):
             found.append("downy_fuzzy_growth")
+        if any(token in text for token in ["cottony", "white down", "white fuzz", "white sporulation"]):
+            found.append("white_cottony_sporulation")
+        if any(token in text for token in ["chasmothecia", "cleistothecia", "black speck", "dark speck", "orange speck"]):
+            found.append("dark_chasmothecia")
+        if "sparse sporulation" in text or "patchy sporulation" in text:
+            found.append("sparse_sporulation")
+        if "vein tracking" in text:
+            found.append("vein_tracking")
+        if any(token in text for token in ["superficial", "surface growth", "surface colony"]):
+            found.append("superficial_surface_growth")
+        if "metallic sheen" in text:
+            found.append("metallic_sheen")
         if any(token in text for token in ["vein bounded", "vein limited", "angular"]):
             found.append("vein_bounded_spots")
         if any(token in text for token in ["curl", "curled", "curling"]):
@@ -637,7 +680,7 @@ def validate_assistant_envelope(
         or isinstance(memory_update.get("recommended_next_image"), str)
     ):
         errors.append("memory_update.recommended_next_image must be a string or null.")
-    for key in ["user_goal", "current_diagnosis"]:
+    for key in ["user_goal", "current_diagnosis", "evidence_sufficiency"]:
         if key in memory_update and not (memory_update.get(key) is None or isinstance(memory_update.get(key), str)):
             errors.append(f"memory_update.{key} must be a string or null.")
     for key in MEMORY_UPDATE_LIST_KEYS:
@@ -1092,6 +1135,7 @@ def normalize_visual_intakes(
         "visible_structures",
         "visible_structure_notes",
         "symptom_locations",
+        "fine_visual_features",
         "candidate_diseases",
         "intake_summary",
     }
@@ -1134,9 +1178,22 @@ def normalize_memory(
     if not isinstance(value, dict):
         return previous
     memory = default_memory()
-    for key in ["summary", "user_goal", "current_diagnosis", "recommended_next_image"]:
-        memory[key] = value[key] if key in value else previous.get(key)
-    for key in ["evidence_present", "evidence_missing", "allowed_follow_up_questions", "open_questions"]:
+    for key in [
+        "summary",
+        "user_goal",
+        "current_diagnosis",
+        "evidence_sufficiency",
+        "single_surface_assessment",
+        "recommended_next_image",
+    ]:
+        memory[key] = value[key] if key in value else previous.get(key, memory.get(key))
+    for key in [
+        "evidence_present",
+        "evidence_missing",
+        "nonblocking_image_limitations",
+        "allowed_follow_up_questions",
+        "open_questions",
+    ]:
         memory[key] = value[key] if key in value else previous.get(key, [])
 
     code_known_images = merge_known_images(previous.get("known_images", []), [])
@@ -1155,13 +1212,21 @@ def normalize_memory(
         max_items=24,
     )
 
-    for list_key in ["evidence_present", "evidence_missing", "allowed_follow_up_questions", "open_questions"]:
+    for list_key in [
+        "evidence_present",
+        "evidence_missing",
+        "nonblocking_image_limitations",
+        "allowed_follow_up_questions",
+        "open_questions",
+    ]:
         if not isinstance(memory[list_key], list):
             memory[list_key] = []
         memory[list_key] = [str(item) for item in memory[list_key]][:12]
-    for text_key in ["summary", "user_goal", "current_diagnosis", "recommended_next_image"]:
+    for text_key in ["summary", "user_goal", "current_diagnosis", "evidence_sufficiency", "recommended_next_image"]:
         if memory[text_key] is not None and not isinstance(memory[text_key], str):
             memory[text_key] = str(memory[text_key])
+    if memory["single_surface_assessment"] is not None and not isinstance(memory["single_surface_assessment"], dict):
+        memory["single_surface_assessment"] = {"note": str(memory["single_surface_assessment"])}
     return memory
 
 
@@ -1415,6 +1480,7 @@ def select_pages(
     *,
     session: Dict[str, Any],
     user_message: str,
+    image_refs: Sequence[str],
     selection_mode: str,
     provider: str,
     model: str,
@@ -1425,6 +1491,13 @@ def select_pages(
 ) -> List[Dict[str, Any]]:
     catalog = load_or_build_catalog(wiki_dir=wiki_dir, catalog_dir=catalog_dir)
     query = build_selection_query(session, user_message)
+    ids_by_path = {page["path"]: page["id"] for page in catalog.get("pages", [])}
+    core_ids: List[str] = []
+    if image_refs and selection_mode != "none":
+        for path in CORE_WIKI_CONTEXT_FOR_IMAGES:
+            page_id = ids_by_path.get(path)
+            if page_id and page_id not in core_ids:
+                core_ids.append(page_id)
 
     if selection_mode == "none":
         selected_ids: List[str] = []
@@ -1452,6 +1525,8 @@ def select_pages(
             )
     else:
         raise ValueError(f"Unsupported selection_mode: {selection_mode}")
+
+    selected_ids = core_ids + [page_id for page_id in selected_ids if page_id not in core_ids]
 
     return read_pages_by_id(
         selected_ids,
@@ -1496,19 +1571,28 @@ You must return ONLY valid JSON with this exact top-level shape:
       {{
         "image_order": 1,
         "is_leaf_image": true,
-        "image_quality": {{"overall": "good", "issues": [], "quality_notes": []}},
+        "image_quality": {{
+          "overall": "good",
+          "issues": [],
+          "diagnostic_impact": "none",
+          "quality_notes": []
+        }},
         "side_assessment": {{"side_label": "uncertain", "confidence": 0.0}},
         "visible_symptoms": [],
         "visible_symptom_notes": [],
         "visible_structures": [],
         "visible_structure_notes": [],
         "symptom_locations": [],
+        "fine_visual_features": [],
         "candidate_diseases": [],
         "intake_summary": "short visual evidence summary"
       }}
     ],
     "evidence_present": [],
     "evidence_missing": [],
+    "evidence_sufficiency": "uncertain",
+    "single_surface_assessment": null,
+    "nonblocking_image_limitations": [],
     "recommended_next_image": null,
     "allowed_follow_up_questions": [],
     "open_questions": []
@@ -1523,26 +1607,22 @@ Use only:
 5. current user message.
 
 Rules:
-- Keep the assistant_message short, professional, and app-appropriate.
-- Write assistant_message in English only.
+- Keep the assistant_message professional, and app-appropriate.
 - Do not invent visual evidence that is not in memory, transcript, or current message.
 - If evidence is incomplete, keep uncertainty visible.
+- Do not request the opposite leaf surface automatically. Ask for another side only when it resolves a specific diagnostic uncertainty.
+- If one surface already shows high-signal powdery mildew or downy mildew features, diagnose from that surface and set recommended_next_image to null or none.
+- Treat lighting, shadows, angle, and partial occlusion as nonblocking unless they prevent inspection of the relevant leaf features.
 - If another image is needed, name the exact next image.
-- If images are attached to this model call, inspect those image pixels and update
-  known_image_updates and visual_intakes in memory_update.
+- If images are attached to this model call, inspect those image pixels and update known_image_updates and visual_intakes in memory_update.
 - If no image pixels are attached, rely only on existing visual_intakes and text.
 - Preserve important facts in memory_update.
 - Drop irrelevant small talk from memory_update.
 - Stay within grape leaf diagnosis and GopherEye project knowledge.
-- Do not recommend treatment unless a reviewed management page is included.
-- Do not create or modify session_id, turn_id, image_id, image_path,
-  visual_intake_id, created_at, or updated_at fields.
-- For image-specific updates, use only image_order from the attached image
-  manifest. The app code will map image_order to image_id and assign stable IDs.
+- Do not create or modify session_id, turn_id, image_id, image_path, visual_intake_id, created_at, or updated_at fields.
+- For image-specific updates, use only image_order from the attached image manifest. The app code will map image_order to image_id and assign stable IDs.
 - Do not output agent_trace. Route and selected agent path are app-owned metadata.
-- Use canonical values when obvious, and put natural-language botanical detail in
-  quality_notes, visible_symptom_notes, visible_structure_notes, evidence_present,
-  evidence_missing, or intake_summary.
+- Use canonical values when obvious, and put natural-language botanical detail in quality_notes, visible_symptom_notes, visible_structure_notes, fine_visual_features, evidence_present, evidence_missing, or intake_summary.
 
 Current short-term memory JSON:
 {json.dumps(session.get("short_term_memory", default_memory()), ensure_ascii=False, indent=2)}
@@ -1605,6 +1685,7 @@ def run_chat_turn(
     pages = select_pages(
         session=session,
         user_message=user_message,
+        image_refs=image_refs,
         selection_mode=selection_mode,
         provider=provider,
         model=model,

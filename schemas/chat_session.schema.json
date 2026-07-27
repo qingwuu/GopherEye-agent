@@ -153,6 +153,19 @@
             "type": "string"
           }
         },
+        "evidence_sufficiency": {
+          "type": "string"
+        },
+        "single_surface_assessment": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "nonblocking_image_limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "recommended_next_image": {
           "type": ["string", "null"]
         },

@@ -1,28 +1,5 @@
 # Data Agent Runtime
 
-This folder is the runtime sidecar for collecting, reviewing, and indexing
-GopherEye data instances.
-
-It is separate from `wiki/`. Unreviewed model labels and raw model outputs do
-not become wiki knowledge.
-
-## Boundary
-
-```text
-existing router / prompt builder / vision-diagnosis agent
-  produce normal session output
-
-tools/data_agent.py
-  reads existing session output
-  creates upload records
-  writes machine_generated / unreviewed model labels
-  creates human review JSON templates
-  imports reviewed JSON
-  builds reviewed dataset indexes
-```
-
-The Data Agent does not make new LLM calls in this first version.
-
 ## Runtime Layout
 
 ```text
@@ -54,10 +31,6 @@ data_agent/
     pending.jsonl
     completed.jsonl
 ```
-
-Each instance folder is the durable unit. It links the images, model output,
-selected context pages, review file, and audit log for one captured session
-turn.
 
 ## Commands
 
@@ -108,27 +81,3 @@ Validate one instance:
 ```bash
 python tools/data_agent.py validate-instance <instance_id>
 ```
-
-## Status Rules
-
-```text
-model_label
-  generation_status = machine_generated
-  review_status = unreviewed
-  is_ground_truth = false
-
-human_review.submitted.json
-  review_status = reviewed
-  decision = accept_model_label | correct_label | reject_not_leaf |
-             reject_unusable_image | needs_more_evidence
-
-reviewed_dataset_index.jsonl
-  includes only accept_model_label and correct_label
-  is_ground_truth = true
-  wiki_ingestion_allowed = false
-```
-
-Insufficient evidence is still recorded. It remains useful for review queues,
-next-image policy, active learning, and future data collection, but it is not
-treated as a reviewed disease label unless a human reviewer explicitly confirms
-an ingestible label.

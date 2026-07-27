@@ -10,7 +10,7 @@ that may call models and tools.
 
 ```text
 wiki_update_flow.md
-  How raw sources become reviewed wiki updates.
+  How simple edits become wiki updates, with raw-source intake optional.
 
 image_diagnosis_flow.md
   How user images become structured diagnosis outputs.
@@ -32,5 +32,6 @@ input
 
 ## Important Constraint
 
-The model may propose. The flow decides whether the proposal is allowed.
+For now, wiki edits can be made directly when requested. Flows still keep the
+steps explicit so stricter rules can be added later.
 

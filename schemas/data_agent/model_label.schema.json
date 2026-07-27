@@ -42,7 +42,11 @@
     "is_ground_truth": { "const": false },
     "evidence_status": {
       "type": "string",
-      "enum": ["provisional_label", "insufficient_evidence"]
+      "enum": [
+        "provisional_label",
+        "single_surface_sufficient_label",
+        "insufficient_evidence"
+      ]
     },
     "source": {
       "type": "object",

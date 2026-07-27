@@ -1,9 +1,7 @@
-# Python caches
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Environments and secrets
 .env
 .envrc
 .venv/
@@ -11,18 +9,15 @@ env/
 venv/
 ENV/
 
-# Tool caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .cache/
 
-# Build artifacts
 build/
 dist/
 *.egg-info/
 
-# Local app run outputs
 sessions/*.json
 Cloud_model/sessions/*.json
 Frontier_model/sessions/*.json
@@ -30,7 +25,6 @@ Frontier_model/runs/*.json
 catalog/
 draft_updates/*.md
 
-# OS/editor noise
 .DS_Store
 .vscode/
 .vs/

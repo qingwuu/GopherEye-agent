@@ -54,7 +54,17 @@
         },
         "evidence_sufficiency": {
           "type": "string",
-          "enum": ["sufficient", "insufficient", "not_applicable", "unknown"]
+          "enum": [
+            "sufficient",
+            "sufficient_single_surface",
+            "sufficient_both_surfaces",
+            "sufficient_with_nonblocking_limitations",
+            "insufficient",
+            "insufficient_need_opposite_surface",
+            "insufficient_need_better_quality",
+            "not_applicable",
+            "unknown"
+          ]
         },
         "confidence": {
           "type": "string",

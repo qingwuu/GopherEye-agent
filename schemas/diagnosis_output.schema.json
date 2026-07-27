@@ -44,8 +44,12 @@
       "type": "string",
       "enum": [
         "sufficient",
+        "sufficient_single_surface",
+        "sufficient_both_surfaces",
+        "sufficient_with_nonblocking_limitations",
         "insufficient_need_adaxial",
         "insufficient_need_abaxial",
+        "insufficient_need_opposite_surface",
         "insufficient_need_better_quality",
         "uncertain"
       ]
@@ -58,9 +62,55 @@
         "abaxial_surface_same_leaf",
         "both_sides_same_leaf",
         "clearer_same_view",
+        "close_up_symptomatic_area",
         "wider_context",
         "none"
       ]
+    },
+    "single_surface_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "visible_surface_scope",
+        "single_surface_decision",
+        "opposite_surface_role",
+        "reason"
+      ],
+      "properties": {
+        "visible_surface_scope": {
+          "type": "string",
+          "enum": [
+            "single_adaxial",
+            "single_abaxial",
+            "mixed",
+            "both_sides_same_leaf",
+            "uncertain",
+            "not_leaf"
+          ]
+        },
+        "single_surface_decision": {
+          "type": "string",
+          "enum": ["diagnostic", "not_diagnostic", "not_applicable"]
+        },
+        "opposite_surface_role": {
+          "type": "string",
+          "enum": [
+            "not_needed",
+            "optional_confirmation",
+            "needed_to_separate_differentials",
+            "needed_because_current_surface_uncertain"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "nonblocking_image_limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "differential_diagnoses": {
       "type": "array",

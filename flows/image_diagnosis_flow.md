@@ -51,15 +51,32 @@ If image_quality.overall is unusable:
 If evidence_sufficiency starts with insufficient:
   diagnosis_status must not be confirmed.
 
-If side_label is adaxial and the disease page says abaxial evidence is needed:
+If side_label is adaxial and the disease page says abaxial evidence is needed
+for this specific case:
   recommended_next_image should be abaxial_surface_same_leaf.
+
+If one visible surface has sufficient disease-specific evidence:
+  evidence_sufficiency should be sufficient_single_surface.
+  recommended_next_image should be none.
+  do not request the opposite surface automatically.
+
+If image_quality issues are nonblocking:
+  do not set diagnosis_status to poor_quality.
+  keep the answer focused on visible leaf evidence.
 ```
 
 ## Minimal Demo Goal
 
 ```text
-User uploads only adaxial image with pale spots and faint powder.
-System outputs possible powdery mildew but requests abaxial image of same leaf.
+User uploads only adaxial image with clear superficial white-gray powdery
+colonies.
+System outputs powdery mildew diagnosis from the single surface and does not
+request the abaxial image as a requirement.
+
+User uploads only adaxial image with generic pale spots and uncertain faint
+residue.
+System keeps the diagnosis provisional and requests the abaxial image of the
+same leaf only if it would separate powdery mildew, downy mildew, or artifact.
 ```
 
 ## Grape Leaf Foundation Pages

@@ -2,57 +2,57 @@
 
 ## Purpose
 
-Convert raw source material into curated, reviewed, linkable wiki knowledge.
+Update wiki knowledge with the simplest useful path. For now, new or revised
+knowledge can be placed directly under `wiki/` without first copying material
+through `raw/` or generating a draft proposal.
 
 ## Inputs
 
 ```text
-raw source path
-source type
-optional title
+wiki target path
+new or revised page content
 current wiki catalog
-related wiki pages
-wiki update proposal schema
+optional source links or notes
 ```
 
 ## Outputs
 
 ```text
-draft_updates/*.md
-optional wiki_update_proposal JSON
-update report
-human review decision
+updated wiki/*.md page
+rebuilt catalog
+optional notes in the page frontmatter sources field
 ```
 
 ## Steps
 
 ```text
-1. Add raw source using add_source.py.
-2. Build or load catalog.
-3. Select related wiki pages.
-4. Generate draft update using prompts/wiki_update_prompt.md.
-5. Suggest new pages, updated sections, and hyperlinks.
-6. Validate proposed JSON against schemas/wiki_update_proposal.schema.json.
-7. Run link checks using tools/wiki_tools.py check-links.
-8. Human reviews and edits curated wiki pages.
-9. Rebuild catalog.
-10. Commit reviewed wiki changes to GitHub.
+1. Choose or create the target page under wiki/.
+2. Edit the page directly.
+3. Add source links in frontmatter when useful.
+4. Run link checks when links changed.
+5. Rebuild catalog.
+6. Commit wiki changes when ready.
 ```
+
+## Optional Raw/Draft Path
+
+Use `raw/`, `add_source.py`, `suggest_updates.py`, or
+`schemas/wiki_update_proposal.schema.json` only when the source needs audit
+history, lengthy review, or later training provenance.
 
 ## Guardrails
 
 ```text
-The model can write draft updates.
-The model must not directly overwrite reviewed wiki pages.
-Raw source text should not be treated as final truth.
-Every important factual update should mention source provenance.
+Keep the edit scoped to the target wiki page.
+Preserve uncertainty when the evidence is not settled.
+Mention source provenance for important factual claims when available.
+Do not add treatment recommendations unless a reviewed treatment resource is
+available.
 ```
 
 ## Minimal Demo
 
 ```bash
-python add_source.py raw/powdery_mildew.md --source-type disease --title "Powdery mildew"
-python suggest_updates.py raw/sources/disease/<file>.md --provider openai --model gpt-4o-mini
 python tools/wiki_tools.py check-links
 python build_catalog.py
 ```

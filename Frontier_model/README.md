@@ -169,6 +169,8 @@ wiki/procedures/visual_observation_sequence.md
 wiki/procedures/symptom_localization_procedure.md
 wiki/workflows/evidence_sufficiency.md
 wiki/workflows/front_back_leaf_process.md
+wiki/diseases/powdery_mildew.md
+wiki/diseases/downy_mildew.md
 ```
 
 The detailed plant diagnostic procedure should stay in `wiki/`. Frontier code

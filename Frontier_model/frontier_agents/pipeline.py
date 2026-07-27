@@ -22,11 +22,15 @@ CORE_WIKI_CONTEXT_BY_TASK = {
         "procedures/symptom_localization_procedure.md",
         "workflows/evidence_sufficiency.md",
         "workflows/front_back_leaf_process.md",
+        "diseases/powdery_mildew.md",
+        "diseases/downy_mildew.md",
     ],
     "grape_leaf_chat": [
         "procedures/whole_diagnosis_process.md",
         "procedures/visual_observation_sequence.md",
         "workflows/evidence_sufficiency.md",
+        "diseases/powdery_mildew.md",
+        "diseases/downy_mildew.md",
     ],
 }
 CORE_SYSTEM_CONTEXT_BY_TASK = {
@@ -283,19 +287,28 @@ Return ONLY valid JSON with this exact top-level shape:
       {{
         "image_order": 1,
         "is_leaf_image": true,
-        "image_quality": {{"overall": "good", "issues": [], "quality_notes": []}},
+        "image_quality": {{
+          "overall": "good",
+          "issues": [],
+          "diagnostic_impact": "none",
+          "quality_notes": []
+        }},
         "side_assessment": {{"side_label": "uncertain", "confidence": 0.0}},
         "visible_symptoms": [],
         "visible_symptom_notes": [],
         "visible_structures": [],
         "visible_structure_notes": [],
         "symptom_locations": [],
+        "fine_visual_features": [],
         "candidate_diseases": [],
         "intake_summary": "short visual evidence summary"
       }}
     ],
     "evidence_present": [],
     "evidence_missing": [],
+    "evidence_sufficiency": "uncertain",
+    "single_surface_assessment": null,
+    "nonblocking_image_limitations": [],
     "recommended_next_image": null,
     "allowed_follow_up_questions": [],
     "open_questions": []
@@ -316,8 +329,15 @@ Rules:
 - Write assistant_message in English only.
 - Stay within grape leaf diagnosis and GopherEye project behavior.
 - For botanical diagnosis, follow the selected wiki procedure pages for leaf
-  identity, image quality, surface assessment, evidence sufficiency, front/back
-  comparison, differential diagnosis, and next-image requests.
+  identity, diagnostic visibility, surface assessment, evidence sufficiency,
+  front/back comparison, differential diagnosis, and next-image requests.
+- Do not request the opposite leaf surface automatically. Ask for another side
+  only when it resolves a specific diagnostic uncertainty.
+- If one surface already shows high-signal powdery mildew or downy mildew
+  features, diagnose from that surface and set recommended_next_image to null or
+  none.
+- Treat lighting, shadows, angle, and partial occlusion as nonblocking unless
+  they prevent inspection of the relevant leaf features.
 - Do not recommend treatment unless a reviewed management page is included.
 - If images are attached, inspect pixels and update known_image_updates and visual_intakes.
 - If no image pixels are attached, rely only on memory, transcript, selected context pages, and user text.
@@ -327,8 +347,8 @@ Rules:
 - Do not output agent_trace. Route, selected agent path, and context metadata are
   recorded by app code outside the model JSON.
 - Use canonical values when obvious, and put natural-language botanical detail in
-  quality_notes, visible_symptom_notes, visible_structure_notes, evidence_present,
-  evidence_missing, or intake_summary.
+  quality_notes, visible_symptom_notes, visible_structure_notes,
+  fine_visual_features, evidence_present, evidence_missing, or intake_summary.
 
 Model profile:
 {profile_name}
