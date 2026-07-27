@@ -79,16 +79,27 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         "data",
         "dataset",
         "ingestion",
+        "ingest",
         "pipeline",
         "label",
+        "labeling",
         "annotation",
-        "数据",
-        "数据集",
-        "管道",
-        "标注",
-        "审核",
+        "annotate",
+        "human review",
+        "reviewed dataset",
+        "unreviewed",
+        "ground truth",
+        "capture-turn",
+        "import-review",
+        "data agent",
+        "data collection",
+        "collection",
+        "upload",
+        "metadata",
+        "index",
+        "review queue",
     ]
-    wiki_keywords = ["wiki", "source", "文献", "资料", "知识库", "更新"]
+    wiki_keywords = ["wiki", "source"]
     grape_keywords = [
         "grape",
         "leaf",
@@ -96,12 +107,25 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         "downy",
         "disease",
         "diagnosis",
-        "葡萄",
-        "叶",
-        "病",
-        "白粉",
-        "霜霉",
     ]
+
+    wiki_keywords.extend(
+        [
+            "sources",
+            "paper",
+            "literature",
+            "knowledge",
+            "knowledge base",
+            "curated",
+            "update",
+        ]
+    )
+    grape_keywords.extend(
+        [
+            "mildew",
+            "symptom",
+        ]
+    )
 
     if any(token in text for token in data_keywords):
         task_type = "data_management"
@@ -243,7 +267,7 @@ def build_frontier_prompt(
 
 Return ONLY valid JSON with this exact top-level shape:
 {{
-  "assistant_message": "short app-ready answer to the user",
+  "assistant_message": "short app-ready English answer to the user",
   "agent_trace": {{
     "task_type": "{route['task_type']}",
     "selected_agent_path": {json.dumps(route['selected_agent_path'])},
@@ -292,6 +316,7 @@ Agent responsibilities:
 - Data agent can explain how to collect, ingest, validate, store, audit, and evaluate data.
 
 Rules:
+- Write assistant_message in English only.
 - Stay within grape leaf diagnosis and GopherEye project behavior.
 - For botanical diagnosis, follow the selected wiki procedure pages for leaf
   identity, image quality, surface assessment, evidence sufficiency, front/back

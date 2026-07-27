@@ -33,7 +33,8 @@ models.example.json
   Example model registry. Copy to a private config if you need local changes.
 
 examples/eval_cases.example.jsonl
-  Small benchmark cases using existing demo images.
+  Small benchmark case-file example. For real experiments, create your own
+  JSONL cases with your external image paths.
 
 sessions/
   Frontier session JSON outputs.
@@ -82,7 +83,7 @@ export OPENAI_API_KEY="..."
 
 python -m Frontier_model.frontier_chat "Please inspect this grape leaf image." \
   --profile openai_frontier \
-  --image-ref BLIP-Qwen/GopherEye/demo/healthy1/77f95a602b13b086a18cd789_teacher__77f95a602b13b086a18cd789.jpg \
+  --image-ref C:/path/to/your/grape_leaf_image_001.jpg \
   --selection-mode keyword \
   --image-context current \
   --json
@@ -95,7 +96,7 @@ export ANTHROPIC_API_KEY="..."
 
 python -m Frontier_model.frontier_chat "Please inspect this grape leaf image." \
   --profile anthropic_frontier \
-  --image-ref BLIP-Qwen/GopherEye/demo/downy1/b908ce7166e6989e301cf494_teacher__b908ce7166e6989e301cf494.jpg \
+  --image-ref C:/path/to/your/grape_leaf_image_001.jpg \
   --selection-mode keyword \
   --image-context current \
   --json
@@ -119,7 +120,7 @@ python -m Frontier_model.frontier_chat "Explain the data ingestion plan for this
 
 ```bash
 python -m Frontier_model.benchmark \
-  --cases Frontier_model/examples/eval_cases.example.jsonl \
+  --cases experiment_logs/external_eval_cases.jsonl \
   --profile openai_frontier \
   --profile anthropic_frontier \
   --profile qwen_local

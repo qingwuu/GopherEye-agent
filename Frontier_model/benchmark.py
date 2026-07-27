@@ -16,7 +16,7 @@ else:
     from .frontier_agents.pipeline import FRONTIER_DIR, run_frontier_turn
 
 
-DEFAULT_CASES_PATH = FRONTIER_DIR / "examples" / "eval_cases.example.jsonl"
+DEFAULT_CASES_PATH = FRONTIER_DIR.parent / "experiment_logs" / "external_eval_cases.jsonl"
 DEFAULT_RUNS_DIR = FRONTIER_DIR / "runs"
 
 
