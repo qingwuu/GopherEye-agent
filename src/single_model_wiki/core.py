@@ -189,6 +189,10 @@ def trim_text(text: str, max_chars: int) -> str:
     return text[:max_chars].rstrip() + "\n\n[TRUNCATED]\n"
 
 
+def contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", text))
+
+
 def render_catalog_for_prompt(catalog: Dict[str, Any]) -> str:
     lines = []
     for page in catalog.get("pages", []):
@@ -490,6 +494,7 @@ def build_answer_prompt(question: str, pages: Sequence[Dict[str, Any]]) -> str:
 
 Use only the wiki pages provided below. If the wiki does not contain enough
 evidence, say what is missing. Cite page paths in the answer.
+Write the answer in English only.
 
 Question:
 {question}
@@ -547,6 +552,8 @@ def ask(
     )
     prompt = build_answer_prompt(question, pages)
     answer = run_model(prompt, provider=provider, model=model, max_new_tokens=max_new_tokens)
+    if contains_cjk(answer):
+        answer = "The model did not produce an English answer. Please retry the request in English."
 
     return {
         "question": question,
@@ -614,6 +621,7 @@ def build_update_prompt(source_text: str, catalog: Dict[str, Any], selected_page
 
 Read the new raw source and the related current wiki pages. Write a markdown
 draft that a human can review before editing the curated wiki.
+Write the draft in English only.
 
 The draft must include:
 - short source summary
