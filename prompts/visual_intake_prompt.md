@@ -20,6 +20,7 @@ Required reasoning:
 - List candidate diseases only if there is visible evidence.
 
 Important:
+- Write all free-text JSON field values in English only.
 - Use selected grape leaf foundation pages when they are provided:
   wiki/grape_leaf/anatomy.md,
   wiki/grape_leaf/leaf_surfaces.md,

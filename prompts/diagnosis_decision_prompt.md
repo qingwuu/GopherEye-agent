@@ -14,6 +14,7 @@ Use only:
 Return JSON that follows schemas/diagnosis_output.schema.json.
 
 Rules:
+- Write user-facing explanations in English only.
 - Do not output confirmed diagnosis when evidence is insufficient.
 - Use grape leaf anatomy pages to interpret symptom location when they are
   provided.

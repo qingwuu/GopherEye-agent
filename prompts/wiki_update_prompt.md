@@ -17,6 +17,7 @@ PART 1: JSON proposal following schemas/wiki_update_proposal.schema.json.
 PART 2: Markdown draft for human review.
 
 Rules:
+- Write the JSON proposal free-text fields and markdown draft in English only.
 - Do not claim raw source content is reviewed truth.
 - Preserve uncertainty.
 - Suggest links to related pages.

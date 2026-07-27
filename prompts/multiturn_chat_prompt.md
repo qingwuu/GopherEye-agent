@@ -50,6 +50,7 @@ Return only JSON:
 
 Rules:
 - Keep the answer short and professional.
+- Write assistant_message in English only.
 - Do not invent visual evidence that is not present in memory or the current
   message.
 - Keep uncertainty visible when evidence is incomplete.
