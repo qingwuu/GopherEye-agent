@@ -278,6 +278,11 @@ def run_cloud_chat_turn(
         )
     else:
         assistant_message = raw.strip()
+    if wiki_chat.contains_cjk(assistant_message):
+        assistant_message = (
+            "I could not produce an English response for this turn. "
+            "Please try again, or upload a clearer image if this is a diagnosis request."
+        )
 
     assistant_turn_id = len(session.get("messages", [])) + 1
     session["messages"].append(
