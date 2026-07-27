@@ -214,6 +214,18 @@ def message_for_turn(session: Dict[str, Any], turn_id: int | None) -> Dict[str, 
     return None
 
 
+def has_record_value(value: Any) -> bool:
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def merge_image_record(existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(existing)
+    for key, value in incoming.items():
+        if has_record_value(value):
+            merged[key] = value
+    return merged
+
+
 def unique_image_items(session: Dict[str, Any], turn: Dict[str, Any]) -> List[Dict[str, Any]]:
     candidates: List[Dict[str, Any]] = []
     for key in ["attached_image_manifest", "requested_image_records"]:
@@ -241,7 +253,10 @@ def unique_image_items(session: Dict[str, Any], turn: Dict[str, Any]) -> List[Di
         image_id = item.get("image_id") or stable_id("img", source_ref or item)
         item["image_id"] = str(image_id)
         item.setdefault("image_role", "user_upload")
-        deduped[str(image_id)] = item
+        dedupe_key = str(image_id)
+        if dedupe_key in deduped:
+            item = merge_image_record(deduped[dedupe_key], item)
+        deduped[dedupe_key] = item
     return list(deduped.values())
 
 
@@ -249,7 +264,11 @@ def copy_image_if_requested(data_root: Path, image_id: str, item: Dict[str, Any]
     if not copy_images:
         return {"copy_status": "not_requested", "stored_path": None}
 
-    source = local_path_from_ref(item.get("image_uri")) or local_path_from_ref(item.get("image_path"))
+    source = (
+        local_path_from_ref(item.get("image_uri"))
+        or local_path_from_ref(item.get("image_path"))
+        or local_path_from_ref(item.get("source_ref"))
+    )
     if source is None or not source.exists() or not source.is_file():
         return {"copy_status": "source_missing", "stored_path": None}
 
