@@ -19,9 +19,8 @@ dist/
 *.egg-info/
 
 sessions/*.json
+sessions/**/*.json
 Cloud_model/sessions/*.json
-Frontier_model/sessions/*.json
-Frontier_model/runs/*.json
 catalog/
 draft_updates/*.md
 

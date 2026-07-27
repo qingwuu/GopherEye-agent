@@ -63,4 +63,3 @@ that there is no visible disease evidence in the image, while still noting image
 quality and side.
 
 See [Grape Leaf Anatomy](anatomy.md).
-

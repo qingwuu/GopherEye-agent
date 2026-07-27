@@ -83,4 +83,3 @@ For example:
 ```
 
 See [Leaf Surfaces](leaf_surfaces.md), [Normal Grape Leaf Variation](normal_variation.md), and [Front/Back Image Request](../workflows/front_back_request.md).
-

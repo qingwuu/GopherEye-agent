@@ -112,4 +112,3 @@ The role profile decides which base schemas apply to the current task.
 
 If a model output does not satisfy the schema, the app should not silently accept
 it. The app should retry, repair, or send the case to human review.
-

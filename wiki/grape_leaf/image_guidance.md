@@ -74,4 +74,3 @@ focus and include the area with visible spots.
 See [Front/Back Image Request](../workflows/front_back_request.md),
 [Front/Back Leaf Process](../workflows/front_back_leaf_process.md), and
 [Evidence Sufficiency](../workflows/evidence_sufficiency.md).
-
