@@ -2,22 +2,26 @@
 title: Raw Source Intake Rules
 page_type: source_requirement
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-27
 sources: []
 ---
 
 # Raw Source Intake Rules
 
-Raw source material is preserved evidence. It can include expert notes,
+Raw source material is optional preserved evidence. It can include expert notes,
 extension documents, papers, annotated examples, meeting notes, treatment
 guides, diagnosis scripts, and dialog sketches.
 
-Curated wiki pages should summarize reviewed source material. They should not
-copy raw material directly into app-facing rules without review.
+For now, wiki updates can be written directly under `wiki/` without first
+copying the material into `raw/`. Use `raw/` only when provenance, audit trail,
+or later training reuse matters.
+
+Curated wiki pages should still avoid unsupported overclaiming. If a claim is
+uncertain, mark it as uncertain in the wiki page.
 
 ## Source Types
 
-Use these source types when adding material with `add_source.py`:
+Use these source types only when adding optional material with `add_source.py`:
 
 ```text
 expert_information
@@ -42,7 +46,7 @@ python add_source.py path/to/treatment_guide.pdf --source-type treatment_resourc
 
 ## Required Metadata
 
-Every source should record:
+When using the optional raw-source path, record:
 
 ```text
 source title
@@ -57,7 +61,7 @@ whether it can be used for model-facing answers
 
 ## Review States
 
-Use this progression:
+If a source needs formal review, use this progression:
 
 ```text
 raw_collected
@@ -67,8 +71,8 @@ reviewed_for_model_training
 deprecated
 ```
 
-Only `reviewed_for_wiki` or stronger material should become curated wiki
-knowledge.
+Simple wiki edits do not need to pass through this state machine. Formal review
+states are for sources or claims that need auditability.
 
 ## Manual Source Folders
 

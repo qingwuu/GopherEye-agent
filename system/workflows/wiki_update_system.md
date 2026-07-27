@@ -2,26 +2,25 @@
 title: Wiki Update System
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-12
+last_updated: 2026-07-27
 sources: []
 ---
 
 # Wiki Update System
 
-The wiki update system converts raw sources into curated project knowledge.
+The wiki update system maintains curated project knowledge. The current default
+is intentionally simple: edit or add markdown pages directly under `wiki/`.
 
 ## Separation
 
 ```text
-raw source
--> draft update
--> human review
--> curated wiki page
+wiki page edit
 -> catalog rebuild
 -> versioned commit
 ```
 
-Raw sources should not directly overwrite curated wiki pages.
+The raw-source and draft-proposal path is optional. Use it only when the source
+needs provenance tracking, human review history, or later training data.
 
 ## Related Artifacts
 
@@ -37,13 +36,14 @@ Raw sources should not directly overwrite curated wiki pages.
 Agentic behavior in this flow means the system can:
 
 ```text
-read a raw source
 identify related wiki pages
-draft page updates
+edit or create a wiki page
 suggest hyperlinks
 check links
-prepare a review report
+rebuild the catalog
 ```
 
-The model proposes updates. The workflow and tools enforce review and safety.
+For now, the model may directly update `wiki/` pages when requested. Future
+rules can reintroduce stricter review or raw-source intake for selected content
+types.
 

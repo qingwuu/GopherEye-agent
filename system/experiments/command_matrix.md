@@ -410,16 +410,18 @@ Compare one local/root session with one cloud session:
 python Cloud_model\compare_sessions.py --local-session sessions\<local_session>.json --cloud-session Cloud_model\sessions\<cloud_session>.json --json
 ```
 
-## 13. Raw Source And Wiki-Draft Flow
+## 13. Simple Wiki Update Flow
 
-This flow does not directly edit curated wiki pages.
+For simple updates, edit or add markdown under `wiki/` directly, then check
+links and rebuild the catalog.
 
 ```powershell
-python add_source.py raw\sources\disease_information\README.md --source-type disease_information --title "Disease information note"
-python suggest_updates.py raw\sources\disease_information\README.md --provider openai --model gpt-4o-mini
+python tools\wiki_tools.py check-links
+python build_catalog.py
 ```
 
-Draft outputs go to `draft_updates\` unless `--output-dir` is provided.
+The older `add_source.py` and `suggest_updates.py` path remains available when
+source provenance or draft review is useful.
 
 ## 14. Recommended Experiment Record Fields
 

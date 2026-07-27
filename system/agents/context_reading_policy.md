@@ -2,7 +2,7 @@
 title: Agent Context Reading Policy
 page_type: system_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -47,8 +47,9 @@ model/provider/router request:
   do not mix provider details into wiki
 
 knowledge update request:
-  read system source-intake workflow and selected wiki target pages
-  keep unreviewed source material out of wiki until reviewed
+  read selected wiki target pages
+  edit wiki directly for simple updates
+  use raw/source-intake workflow only when provenance or review is needed
 ```
 
 ## Core Wiki Pages For Visual Diagnosis
@@ -62,11 +63,13 @@ wiki/procedures/visual_observation_sequence.md
 wiki/procedures/symptom_localization_procedure.md
 wiki/workflows/evidence_sufficiency.md
 wiki/workflows/front_back_leaf_process.md
+wiki/diseases/powdery_mildew.md
+wiki/diseases/downy_mildew.md
 ```
 
 Additional pages should be selected by the current question and image context,
 for example grape leaf anatomy, leaf surfaces, normal variation, dialog scripts,
-disease pages, or treatment resources.
+other disease pages, or treatment resources.
 
 ## Prompt Assembly Principle
 

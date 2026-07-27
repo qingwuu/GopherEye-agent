@@ -2,7 +2,7 @@
 title: Tool Layer
 page_type: tool_explanation
 review_status: draft
-last_updated: 2026-07-12
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -31,9 +31,9 @@ For example:
 
 ```text
 Model proposes a wiki update.
-Tool writes to draft_updates/.
-Human reviews.
-Only reviewed changes are committed.
+Tool edits the target wiki page directly when requested.
+Tool checks links and rebuilds the catalog.
+Raw-source intake remains optional for provenance-heavy updates.
 ```
 
 ## Current Tool File

@@ -38,8 +38,10 @@ uncertain
 not_leaf
 ```
 
-For disease diagnosis, one side may be insufficient. The workflow should be able
-to ask for the missing side when needed.
+For disease diagnosis, one side may be sufficient or insufficient depending on
+the visible disease-specific evidence. The workflow should be able to diagnose
+from one side when high-signal evidence is present and ask for the missing side
+only when it resolves a specific uncertainty.
 
 ## Temporal Reasoning
 

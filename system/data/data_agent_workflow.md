@@ -2,7 +2,7 @@
 title: Data Agent Workflow
 page_type: system_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -85,6 +85,23 @@ future data collection planning
 
 They do not become wiki knowledge or final training labels without human
 review.
+
+## Single-Surface Sufficient Labels
+
+Some machine-generated labels may be supported by one visible leaf surface when
+the disease-specific evidence is high-signal. Store these separately from
+insufficient cases so later review can distinguish:
+
+```text
+single_surface_sufficient_label:
+  one visible side contains enough evidence for a diagnosis
+  opposite side may be optional confirmation
+  missing side is not automatically treated as a data defect
+
+insufficient_evidence:
+  the visible evidence cannot separate likely differentials
+  the next needed image or observation should be explicit
+```
 
 ## Human Review V1
 

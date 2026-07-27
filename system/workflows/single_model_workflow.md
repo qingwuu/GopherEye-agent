@@ -45,12 +45,12 @@ This is only a fallback or debugging mode.
 ## Update Flow
 
 ```text
-new raw source
--> same model reads source preview and catalog
--> same model selects related pages
--> same model drafts update suggestions
--> human reviews draft
--> curated wiki is manually updated
+new or revised wiki knowledge
+-> target wiki page is edited directly
 -> catalog is rebuilt
 ```
+
+The older raw-source and draft-update path remains available for updates that
+need provenance tracking or formal review, but it is not required for simple
+wiki edits.
 

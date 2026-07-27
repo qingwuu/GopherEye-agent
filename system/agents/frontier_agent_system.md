@@ -2,7 +2,7 @@
 title: Frontier Agent System
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -71,6 +71,8 @@ wiki/procedures/visual_observation_sequence.md
 wiki/procedures/symptom_localization_procedure.md
 wiki/workflows/evidence_sufficiency.md
 wiki/workflows/front_back_leaf_process.md
+wiki/diseases/powdery_mildew.md
+wiki/diseases/downy_mildew.md
 ```
 
 Code may require these page paths as core context, but the botanical reasoning

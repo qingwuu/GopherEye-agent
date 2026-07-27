@@ -2,7 +2,7 @@
 title: Schema Layer
 page_type: schema_explanation
 review_status: draft
-last_updated: 2026-07-24
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -94,7 +94,12 @@ schemas/visual_intake.schema.json
   visual observation payload used inside memory_update.visual_intakes.
 
 schemas/diagnosis_output.schema.json
-  diagnosis result contract for diagnosis-specific outputs and future exports.
+  diagnosis status, single-surface sufficiency, next-image, and differential
+  diagnosis contract for diagnosis-specific outputs and future exports.
+
+schemas/base/memory_update.schema.json
+  session memory payload, including optional evidence_sufficiency,
+  single_surface_assessment, and nonblocking_image_limitations.
 
 schemas/data_agent/*.schema.json
   deterministic data pipeline records, human review, and reviewed dataset index.

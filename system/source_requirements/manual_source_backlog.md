@@ -2,7 +2,7 @@
 title: Manual Source Backlog
 page_type: source_requirement
 review_status: draft
-last_updated: 2026-07-23
+last_updated: 2026-07-27
 sources: []
 ---
 
@@ -19,11 +19,14 @@ requested from experts before the curated wiki makes stronger claims.
 3. Treatment or management resources from authoritative extension/IPM sources.
 4. Expert diagnosis scripts: the questions and checks an expert uses.
 5. Dialog tree examples for multi-turn user interaction.
-6. Disease-specific raw sources for powdery mildew, downy mildew, black rot,
+6. Disease-specific source notes for powdery mildew, downy mildew, black rot,
    nutrient deficiency, insect damage, and healthy/normal variation.
 ```
 
 ## Where To Put Materials
+
+Simple wiki-ready notes can go directly under `wiki/`. Use these raw folders
+only when preserving source files or review artifacts is useful:
 
 ```text
 raw/sources/expert_information/
@@ -35,7 +38,7 @@ raw/sources/dialog_trees/
 raw/sources/disease_information/
 ```
 
-Each folder has a README with collection notes.
+Each folder has a README with optional collection notes.
 
 ## Collection Targets
 
