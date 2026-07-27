@@ -1,2 +1,0 @@
-{"relationship_id":"rel_pair_leaf_001","relationship_type":"front_back_pair","group_id":null,"plant_id":null,"leaf_id":"leaf_001","observation_id":"obs_001","pair_id":"pair_leaf_001","image_ids":["img_pm_adaxial_001","img_pm_abaxial_001"],"side_coverage":["adaxial","abaxial"],"review_status":"verified"}
-{"relationship_id":"rel_obs_blurry_001","relationship_type":"single_observation","group_id":null,"plant_id":null,"leaf_id":null,"observation_id":"obs_blurry_001","pair_id":null,"image_ids":["img_blurry_001"],"side_coverage":["uncertain"],"review_status":"needs_review"}

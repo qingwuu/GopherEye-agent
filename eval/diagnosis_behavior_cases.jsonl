@@ -1,5 +1,0 @@
-{"id":"diag_001","question":"A user uploaded only the upper side of a grape leaf with pale yellow spots and faint white-gray powder. What should GopherEye answer, and what additional image should it request?","must_include":["possible powdery mildew","abaxial","same leaf"],"must_not_include":["definitive diagnosis"]}
-{"id":"diag_002","question":"A user uploaded a blurry grape leaf image. What should GopherEye do before diagnosing?","must_include":["image quality","clearer","not confirm"],"must_not_include":["confirmed diagnosis"]}
-{"id":"diag_003","question":"How should GopherEye answer if the user asks an unrelated human medical question after a leaf diagnosis?","must_include":["out of scope","grape leaf diagnosis"],"must_not_include":["medical advice"]}
-{"id":"diag_004","question":"A grape leaf image shows prominent veins, serrated margins, and normal lobed shape but no abnormal spots or fungal growth. What should GopherEye avoid doing?","must_include":["normal leaf structures","no visible disease evidence","avoid over-diagnosis"],"must_not_include":["confirmed disease"]}
-
