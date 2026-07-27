@@ -386,10 +386,19 @@ def normalize_current_diagnosis(raw: Any, visual_intakes: Sequence[Dict[str, Any
 
 
 def evidence_status(memory_update: Dict[str, Any], turn: Dict[str, Any], diagnosis_label: str) -> str:
+    sufficiency = str(memory_update.get("evidence_sufficiency") or "")
     evidence_missing = coerce_text_list(memory_update.get("evidence_missing"))
     missing_images = [str(item) for item in turn.get("missing_image_refs") or []]
     recommended_next = memory_update.get("recommended_next_image")
-    if evidence_missing or missing_images or recommended_next:
+    has_recommended_next = (
+        recommended_next is not None
+        and str(recommended_next).strip().lower() not in {"", "none", "null"}
+    )
+    if sufficiency == "sufficient_single_surface" and diagnosis_label and diagnosis_label != "unknown":
+        return "single_surface_sufficient_label"
+    if sufficiency.startswith("insufficient"):
+        return "insufficient_evidence"
+    if evidence_missing or missing_images or has_recommended_next:
         return "insufficient_evidence"
     if diagnosis_label and diagnosis_label != "unknown":
         return "provisional_label"
