@@ -28,7 +28,7 @@ class ModelBackend:
         prompt: str,
         *,
         image_refs: Sequence[str] = (),
-        max_output_tokens: int = 900,
+        max_output_tokens: int = 2400,
     ) -> ModelResponse:
         raise NotImplementedError
 
@@ -67,7 +67,7 @@ class EchoBackend(ModelBackend):
         prompt: str,
         *,
         image_refs: Sequence[str] = (),
-        max_output_tokens: int = 900,
+        max_output_tokens: int = 2400,
     ) -> ModelResponse:
         text = {
             "assistant_message": (
@@ -96,7 +96,7 @@ class OpenAIResponsesBackend(ModelBackend):
         prompt: str,
         *,
         image_refs: Sequence[str] = (),
-        max_output_tokens: int = 900,
+        max_output_tokens: int = 2400,
     ) -> ModelResponse:
         self._check_images(image_refs)
         try:
@@ -133,7 +133,7 @@ class OpenAIChatCompatibleBackend(ModelBackend):
         prompt: str,
         *,
         image_refs: Sequence[str] = (),
-        max_output_tokens: int = 900,
+        max_output_tokens: int = 2400,
     ) -> ModelResponse:
         self._check_images(image_refs)
         try:
@@ -175,7 +175,7 @@ class AnthropicMessagesBackend(ModelBackend):
         prompt: str,
         *,
         image_refs: Sequence[str] = (),
-        max_output_tokens: int = 900,
+        max_output_tokens: int = 2400,
     ) -> ModelResponse:
         self._check_images(image_refs)
         try:
@@ -217,7 +217,7 @@ class LocalWikiBackend(ModelBackend):
         prompt: str,
         *,
         image_refs: Sequence[str] = (),
-        max_output_tokens: int = 900,
+        max_output_tokens: int = 2400,
     ) -> ModelResponse:
         repo_root = Path(__file__).resolve().parents[2]
         if str(repo_root) not in sys.path:

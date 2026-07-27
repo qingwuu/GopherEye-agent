@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 from .config import DEFAULT_CONFIG_PATH, load_model_config
 from .providers import create_backend
+from . import session_runtime as wiki_chat
 
 
 FRONTIER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTIER_DIR.parent
-APP_DIR = REPO_ROOT
 DEFAULT_SYSTEM_DIR = REPO_ROOT / "system"
 DEFAULT_SYSTEM_CATALOG_DIR = REPO_ROOT / "catalog" / "system"
 CORE_WIKI_CONTEXT_BY_TASK = {
@@ -42,11 +41,7 @@ CORE_SYSTEM_CONTEXT_BY_TASK = {
     ],
 }
 
-if str(APP_DIR) not in sys.path:
-    sys.path.insert(0, str(APP_DIR))
-
-import chat as wiki_chat  # noqa: E402
-from src.single_model_wiki.core import (  # noqa: E402
+from src.single_model_wiki.core import (
     DEFAULT_CATALOG_DIR,
     DEFAULT_WIKI_DIR,
     load_or_build_catalog,
@@ -299,8 +294,21 @@ Return ONLY valid JSON with this exact top-level shape:
         "visible_structures": [],
         "visible_structure_notes": [],
         "symptom_locations": [],
-        "fine_visual_features": [],
-        "candidate_diseases": [],
+        "fine_visual_features": [
+          {{
+            "feature": "short observed feature",
+            "surface": "uncertain",
+            "location": "short location",
+            "diagnostic_relevance": "why this feature matters"
+          }}
+        ],
+        "candidate_diseases": [
+          {{
+            "disease": "powdery mildew",
+            "confidence": "unknown",
+            "supporting_evidence": []
+          }}
+        ],
         "intake_summary": "short visual evidence summary"
       }}
     ],
@@ -341,6 +349,20 @@ Rules:
 - Do not recommend treatment unless a reviewed management page is included.
 - If images are attached, inspect pixels and update known_image_updates and visual_intakes.
 - If no image pixels are attached, rely only on memory, transcript, selected context pages, and user text.
+- In image_quality, use only overall values good, usable_with_caution, or
+  unusable; use only diagnostic_impact values none, minor_nonblocking, or
+  blocks_symptom_inspection.
+- In visible_symptoms and visible_structures, use canonical schema tokens only;
+  put natural-language details in the corresponding *_notes fields.
+- In fine_visual_features, every item must be an object with feature, surface,
+  location, and diagnostic_relevance.
+- In candidate_diseases, every item must be an object with disease,
+  confidence, and supporting_evidence. Do not output disease names as bare strings.
+- Use evidence_sufficiency only from sufficient, sufficient_single_surface,
+  sufficient_both_surfaces, sufficient_with_nonblocking_limitations,
+  insufficient_need_adaxial, insufficient_need_abaxial,
+  insufficient_need_opposite_surface, insufficient_need_better_quality, or uncertain.
+- single_surface_assessment must be null or an object, not a string.
 - Do not create or modify session_id, turn_id, image_id, image_path,
   visual_intake_id, created_at, or updated_at fields.
 - For image-specific updates, use only image_order from the attached image manifest.
@@ -348,7 +370,7 @@ Rules:
   recorded by app code outside the model JSON.
 - Use canonical values when obvious, and put natural-language botanical detail in
   quality_notes, visible_symptom_notes, visible_structure_notes,
-  fine_visual_features, evidence_present, evidence_missing, or intake_summary.
+  fine_visual_features[].feature, evidence_present, evidence_missing, or intake_summary.
 
 Model profile:
 {profile_name}
@@ -390,7 +412,7 @@ def run_frontier_turn(
     max_selected_files: int = 6,
     max_page_chars: int = 12000,
     recent_turns: int = 8,
-    max_output_tokens: int = 900,
+    max_output_tokens: int = 2400,
     image_context: str = "session",
     max_attached_images: int = 8,
     session_dir: Path = DEFAULT_SESSION_DIR,
@@ -475,7 +497,7 @@ def run_frontier_turn(
         repair_response = backend.generate(
             repair_prompt,
             image_refs=attached_image_refs,
-            max_output_tokens=max_output_tokens,
+            max_output_tokens=max(max_output_tokens, 2400),
         )
         repair_responses.append(repair_response)
         return repair_response.text

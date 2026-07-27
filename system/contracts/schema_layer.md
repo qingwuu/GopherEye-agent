@@ -33,7 +33,6 @@ schemas/diagnosis_output.schema.json
 schemas/envelopes/assistant_envelope.schema.json
 schemas/base/known_image_update.schema.json
 schemas/base/memory_update.schema.json
-schemas/role_profiles/assistant_role_profiles.json
 schemas/wiki_update_proposal.schema.json
 schemas/wiki_frontmatter.schema.json
 schemas/flow_run.schema.json
@@ -81,9 +80,8 @@ frontier_grape_leaf_chat / frontier_knowledge_management / frontier_general_proj
 Route, selected agent path, context label, selected pages, and tool/runtime trace
 are code-owned turn metadata stored outside the model-owned JSON envelope.
 
-The older role-specific envelope schema files have been removed. Role-specific
-requirements now live in `schemas/role_profiles/assistant_role_profiles.json`
-and runtime validation code.
+The older role-specific envelope schema files have been removed.
+Role-specific requirements now live in runtime validation code.
 
 ## Thin Envelope, Strong Payloads
 

@@ -137,7 +137,6 @@ implemented:
   wiki/system context retrieval
   OpenAI / Claude / Kimi / local Qwen adapter structure
   JSON envelope validation, one retry, and fallback formatting
-  benchmark runner
   session storage
   deterministic Data Agent CLI sidecar for capture/review/indexing
 
@@ -151,5 +150,4 @@ not yet implemented:
 
 See [Agent Context Reading Policy](context_reading_policy.md),
 [Evidence Sufficiency](../../wiki/workflows/evidence_sufficiency.md),
-[Whole Grape Leaf Diagnosis Process](../../wiki/procedures/whole_diagnosis_process.md), and
-[Model Choice](../models/model_choice.md).
+[Whole Grape Leaf Diagnosis Process](../../wiki/procedures/whole_diagnosis_process.md).

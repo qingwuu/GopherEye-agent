@@ -5,19 +5,16 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
-
+from typing import Any, Dict, List
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from src.gophereye_runtime.utils import normalize_repo_path, safe_print
+
+
 WIKI_DIR = ROOT_DIR / "wiki"
-
-
-def safe_print(text: str) -> None:
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
-        sys.stdout.buffer.flush()
-    else:
-        print(text)
 
 
 def read_text(path: Path) -> str:
@@ -31,10 +28,7 @@ def iter_markdown_files(root: Path = WIKI_DIR) -> List[Path]:
 
 
 def normalize_path(path_text: str) -> Path:
-    path = Path(path_text)
-    if path.is_absolute():
-        return path
-    return ROOT_DIR / path
+    return normalize_repo_path(ROOT_DIR, path_text)
 
 
 def page_title(text: str, fallback: str) -> str:

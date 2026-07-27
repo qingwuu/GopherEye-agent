@@ -105,6 +105,5 @@ Botanical procedure comes from wiki pages.
 System behavior comes from system pages.
 ```
 
-See [Frontier Agent System](frontier_agent_system.md),
-[Dataset Memory Direction](../data/dataset_memory.md), and
-[Wiki Update System](../workflows/wiki_update_system.md).
+See [Frontier Agent System](frontier_agent_system.md) and
+[Dataset Memory Direction](../data/dataset_memory.md).

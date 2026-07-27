@@ -91,7 +91,6 @@ treatment question guardrails
 handoff-to-expert conditions
 ```
 
-See [Raw Source Intake Rules](raw_source_intake_rules.md),
-[Expert Information And Examples](../../wiki/expert_information/expert_information_and_examples.md),
+See [Expert Information And Examples](../../wiki/expert_information/expert_information_and_examples.md),
 [Treatment Resource Policy](../../wiki/treatment_resources/treatment_resource_policy.md), and
 [Diagnosis Scripts](../../wiki/diagnosis/diagnosis_scripts.md).

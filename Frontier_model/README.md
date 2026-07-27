@@ -5,8 +5,7 @@ agent system. It reuses root-level wiki knowledge, system documentation,
 schemas, session memory, image bookkeeping, and selected-page workflow, but
 routes model calls through a provider registry.
 
-It reuses the root-level wiki app (`chat.py`, `wiki/`, `schemas/`, and
-`src/single_model_wiki/`) and does not replace `Cloud_model/cloud_chat.py`.
+It reuses the root-level wiki knowledge, schemas, and shared runtime helpers.
 
 ## Goal
 
@@ -23,18 +22,11 @@ same app flow
 frontier_chat.py
   CLI for one multi-turn agent session.
 
-benchmark.py
-  Runs the same cases against one or more model profiles.
-
 frontier_agents/
   Provider adapters and the staged agent pipeline.
 
 models.example.json
   Example model registry. Copy to a private config if you need local changes.
-
-examples/eval_cases.example.jsonl
-  Small benchmark case-file example. For real experiments, create your own
-  JSONL cases with your external image paths.
 ```
 
 ## Model Profiles
@@ -108,16 +100,6 @@ export MOONSHOT_API_KEY="..."
 python -m Frontier_model.frontier_chat "Explain the data ingestion plan for this app." \
   --profile kimi \
   --json
-```
-
-## Benchmark Multiple Profiles
-
-```bash
-python -m Frontier_model.benchmark \
-  --cases experiment_logs/external_eval_cases.jsonl \
-  --profile openai_frontier \
-  --profile anthropic_frontier \
-  --profile qwen_local
 ```
 
 Frontier session JSON outputs are saved outside this code folder under:

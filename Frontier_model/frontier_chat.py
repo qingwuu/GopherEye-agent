@@ -7,17 +7,11 @@ from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from src.gophereye_runtime.utils import safe_print
     from Frontier_model.frontier_agents.pipeline import DEFAULT_SESSION_DIR, run_frontier_turn
 else:
+    from src.gophereye_runtime.utils import safe_print
     from .frontier_agents.pipeline import DEFAULT_SESSION_DIR, run_frontier_turn
-
-
-def safe_print(text: str) -> None:
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
-        sys.stdout.buffer.flush()
-    else:
-        print(text)
 
 
 def print_result(result: dict, *, as_json: bool) -> None:
@@ -56,7 +50,7 @@ def main() -> None:
     parser.add_argument("--max-selected-files", type=int, default=6)
     parser.add_argument("--max-page-chars", type=int, default=12000)
     parser.add_argument("--recent-turns", type=int, default=8)
-    parser.add_argument("--max-output-tokens", type=int, default=900)
+    parser.add_argument("--max-output-tokens", type=int, default=2400)
     parser.add_argument("--session-dir", default=str(DEFAULT_SESSION_DIR))
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()

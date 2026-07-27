@@ -30,11 +30,11 @@ recommended next image if evidence is insufficient
 
 ```text
 1. Load user image.
-2. VLM performs visual intake using prompts/visual_intake_prompt.md.
+2. VLM performs visual intake using the frontier prompt and selected wiki pages.
 3. Validate visual intake JSON against schemas/visual_intake.schema.json.
 4. Select relevant wiki pages, including grape leaf foundation pages when
    anatomy, side, normal variation, or image quality matters.
-5. VLM combines visual evidence and wiki rules using prompts/diagnosis_decision_prompt.md.
+5. VLM combines visual evidence and wiki rules in the validated assistant envelope.
 6. Validate diagnosis JSON against schemas/diagnosis_output.schema.json.
 7. Apply hard business rules.
 8. Save diagnosis state for follow-up chat.

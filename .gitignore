@@ -27,3 +27,4 @@ draft_updates/*.md
 .DS_Store
 .vscode/
 .vs/
+.env/

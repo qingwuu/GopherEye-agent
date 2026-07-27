@@ -1,0 +1,41 @@
+{
+  "default_profile": "echo",
+  "profiles": {
+    "echo": {
+      "provider": "echo",
+      "model": "echo",
+      "supports_images": false
+    },
+    "openai_frontier": {
+      "provider": "openai_responses",
+      "model": "gpt-5.6-sol",
+      "api_key_env": "OPENAI_API_KEY",
+      "supports_images": true
+    },
+    "openai_balanced": {
+      "provider": "openai_responses",
+      "model": "gpt-5.6-terra",
+      "api_key_env": "OPENAI_API_KEY",
+      "supports_images": true
+    },
+    "anthropic_frontier": {
+      "provider": "anthropic_messages",
+      "model": "claude-opus-4-8",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "supports_images": true
+    },
+    "kimi": {
+      "provider": "openai_chat_compatible",
+      "model": "kimi-latest",
+      "api_key_env": "MOONSHOT_API_KEY",
+      "base_url": "https://api.moonshot.ai/v1",
+      "supports_images": false
+    },
+    "qwen_local": {
+      "provider": "local_wiki",
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+      "local_provider": "qwen-vl",
+      "supports_images": true
+    }
+  }
+}

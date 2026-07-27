@@ -42,4 +42,4 @@ Raw-source intake remains optional for provenance-heavy updates.
 tools/wiki_tools.py
 ```
 
-See [Wiki Update System](../workflows/wiki_update_system.md).
+See the wiki update flow in `flows/wiki_update_flow.md`.

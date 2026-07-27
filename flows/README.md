@@ -14,9 +14,6 @@ wiki_update_flow.md
 
 image_diagnosis_flow.md
   How user images become structured diagnosis outputs.
-
-followup_chat_flow.md
-  How user follow-up questions are answered safely.
 ```
 
 ## Flow Pattern

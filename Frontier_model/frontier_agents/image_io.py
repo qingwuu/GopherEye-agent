@@ -2,21 +2,18 @@ from __future__ import annotations
 
 import base64
 import mimetypes
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import unquote, urlparse
+
+from src.gophereye_runtime.utils import file_uri_to_path as runtime_file_uri_to_path
 
 
 def file_uri_to_path(uri: str) -> Path:
-    parsed = urlparse(uri)
-    if parsed.scheme != "file":
+    path = runtime_file_uri_to_path(uri)
+    if path is None:
         raise ValueError(f"Not a file URI: {uri}")
-    path_text = unquote(parsed.path)
-    if os.name == "nt" and re.match(r"^/[A-Za-z]:/", path_text):
-        path_text = path_text[1:]
-    return Path(path_text)
+    return path
 
 
 def resolve_image_path(image_ref: str) -> Path:

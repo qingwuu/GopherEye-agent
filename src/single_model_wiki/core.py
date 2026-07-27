@@ -6,11 +6,10 @@ import json
 import os
 import re
 import shutil
-import sys
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, List, Sequence
+
+from src.gophereye_runtime.utils import now_utc, safe_print, timestamp_id
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -21,14 +20,6 @@ DEFAULT_DRAFT_DIR = ROOT_DIR / "draft_updates"
 
 QWEN_VL_PROVIDERS = {"qwen-vl", "transformers-vl"}
 _QWEN_VL_CACHE: Dict[str, Any] = {}
-
-
-def safe_print(text: str) -> None:
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
-        sys.stdout.buffer.flush()
-    else:
-        print(text)
 
 
 def read_text(path: Path) -> str:
@@ -44,14 +35,6 @@ def write_text(path: Path, text: str) -> None:
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
-
-
-def now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def timestamp_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def slugify(text: str) -> str:
