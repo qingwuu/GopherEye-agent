@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_ROOT = ROOT_DIR / "data_agent"
-DEFAULT_FRONTIER_SESSION_DIR = ROOT_DIR / "Frontier_model" / "sessions"
+DEFAULT_FRONTIER_SESSION_DIR = ROOT_DIR / "sessions" / "frontier"
 SCHEMA_DIR = ROOT_DIR / "schemas" / "data_agent"
 
 REVIEW_DECISIONS = {

@@ -35,12 +35,6 @@ models.example.json
 examples/eval_cases.example.jsonl
   Small benchmark case-file example. For real experiments, create your own
   JSONL cases with your external image paths.
-
-sessions/
-  Frontier session JSON outputs.
-
-runs/
-  Benchmark result JSON outputs.
 ```
 
 ## Model Profiles
@@ -126,10 +120,10 @@ python -m Frontier_model.benchmark \
   --profile qwen_local
 ```
 
-Benchmark outputs are saved under:
+Frontier session JSON outputs are saved outside this code folder under:
 
 ```text
-Frontier_model/runs/
+sessions/frontier/
 ```
 
 ## Agent Flow
@@ -142,7 +136,7 @@ user message / image
 -> diagnosis/chat/data agent
 -> thin assistant envelope JSON response
 -> session memory update
--> saved session and benchmark outputs
+-> saved session output
 ```
 
 The first version uses a deterministic router plus frontier model calls for the

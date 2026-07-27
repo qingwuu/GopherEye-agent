@@ -16,7 +16,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_WIKI_DIR = ROOT_DIR / "wiki"
 DEFAULT_RAW_DIR = ROOT_DIR / "raw"
-DEFAULT_CATALOG_DIR = ROOT_DIR / "catalog"
+DEFAULT_CATALOG_DIR = ROOT_DIR / "catalog" / "wiki"
 DEFAULT_DRAFT_DIR = ROOT_DIR / "draft_updates"
 
 QWEN_VL_PROVIDERS = {"qwen-vl", "transformers-vl"}

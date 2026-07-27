@@ -43,13 +43,13 @@ python tools/data_agent.py init
 Capture the latest visual diagnosis turn from an existing Frontier session:
 
 ```bash
-python tools/data_agent.py capture-turn --session-path Frontier_model/sessions/<session>.json
+python tools/data_agent.py capture-turn --session-path sessions/frontier/<session>.json
 ```
 
 Optionally copy local image files into `data_agent/uploads/images/`:
 
 ```bash
-python tools/data_agent.py capture-turn --session-path Frontier_model/sessions/<session>.json --copy-images
+python tools/data_agent.py capture-turn --session-path sessions/frontier/<session>.json --copy-images
 ```
 
 List records waiting for human review:

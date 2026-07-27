@@ -14,7 +14,7 @@ FRONTIER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTIER_DIR.parent
 APP_DIR = REPO_ROOT
 DEFAULT_SYSTEM_DIR = REPO_ROOT / "system"
-DEFAULT_SYSTEM_CATALOG_DIR = FRONTIER_DIR / "catalog" / "system"
+DEFAULT_SYSTEM_CATALOG_DIR = REPO_ROOT / "catalog" / "system"
 CORE_WIKI_CONTEXT_BY_TASK = {
     "visual_intake_or_diagnosis": [
         "procedures/whole_diagnosis_process.md",
@@ -59,7 +59,7 @@ from src.single_model_wiki.core import (  # noqa: E402
 )
 
 
-DEFAULT_SESSION_DIR = FRONTIER_DIR / "sessions"
+DEFAULT_SESSION_DIR = REPO_ROOT / "sessions" / "frontier"
 
 
 def parse_json_array(text: str) -> List[Any]:
