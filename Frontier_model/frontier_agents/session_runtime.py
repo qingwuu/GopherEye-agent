@@ -110,9 +110,14 @@ PROTECTED_MODEL_MEMORY_KEYS = {
     "turn_id",
     "image_id",
     "image_path",
+    "image_uri",
+    "image_role",
     "visual_intake_id",
     "created_at",
     "updated_at",
+    "first_seen_turn_id",
+    "last_seen_turn_id",
+    "source",
 }
 ASSISTANT_ENVELOPE_SCHEMA_NAME = "schemas/envelopes/assistant_envelope.schema.json"
 BASE_KNOWN_IMAGE_UPDATE_SCHEMA_NAME = "schemas/base/known_image_update.schema.json"
@@ -437,12 +442,38 @@ def canonical_structures(value: Any) -> tuple[List[str], List[str]]:
     for item in _as_list(value):
         raw = str(item).strip()
         text = _normalized_text(raw)
+        found: List[str] = []
         mapped = STRUCTURE_SYNONYMS.get(text)
         if mapped in STRUCTURES:
-            _append_unique(canonical, mapped)
-            if raw != mapped:
-                _append_unique(notes, raw)
+            found.append(mapped)
         else:
+            if "blade" in text or "leaf blade" in text:
+                found.append("blade")
+            if "lamina" in text:
+                found.append("lamina")
+            if "lobe" in text:
+                found.append("lobes")
+            if "serrated" in text or "margin" in text or "edge" in text:
+                found.append("serrated_margin")
+            if "petiole" in text:
+                found.append("petiole")
+            if "midrib" in text:
+                found.append("midrib")
+            if "primary vein" in text or "major vein" in text or "radiating vein" in text:
+                found.append("primary_veins")
+            if "secondary vein" in text:
+                found.append("secondary_veins")
+            if "apex" in text or "tip" in text:
+                found.append("apex")
+            if "base" in text:
+                found.append("leaf_base")
+            if "adaxial" in text or "upper surface" in text or "top surface" in text:
+                found.append("adaxial_surface")
+            if "abaxial" in text or "underside" in text or "lower surface" in text:
+                found.append("abaxial_surface")
+        for structure in found:
+            _append_unique(canonical, structure)
+        if raw and (not found or raw not in STRUCTURES):
             _append_unique(notes, raw)
     return canonical, notes
 
@@ -612,6 +643,453 @@ def normalize_evidence_sufficiency(value: Any) -> str | None:
     return "uncertain"
 
 
+def _string_list(value: Any, *, max_items: int = 6) -> List[str]:
+    items: List[str] = []
+    for item in _as_list(value):
+        if item is None:
+            continue
+        text = str(item).strip()
+        if text and text not in items:
+            items.append(text)
+        if len(items) >= max_items:
+            break
+    return items
+
+
+def _coerce_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 1 else None
+
+
+def _coerce_confidence(value: Any, *, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number > 1 and number <= 100:
+        number = number / 100
+    return max(0.0, min(1.0, number))
+
+
+def normalize_recommended_next_image(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    text = _normalized_text(raw)
+    if text in {"none", "no", "no next image", "not needed", "not required", "null"}:
+        return None
+    if any(token in text for token in ["close", "closer", "sharp", "quality", "glare", "same surface"]):
+        return "close_up_symptomatic_area"
+    if "opposite" in text:
+        return "opposite_surface_same_leaf"
+    if "adaxial" in text or "upper" in text or "front" in text:
+        return "adaxial_surface"
+    if "abaxial" in text or "underside" in text or "lower" in text or "back" in text:
+        return "abaxial_surface"
+    return raw
+
+
+def _default_diagnostic_impact(quality_overall: str, quality_issues: Sequence[str]) -> str:
+    if quality_overall == "unusable":
+        return "blocks_symptom_inspection"
+    if quality_issues:
+        return "minor_nonblocking"
+    return "none"
+
+
+def _candidate_diseases_from_observation(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if "candidate_diseases" in item:
+        return normalize_candidate_diseases(item.get("candidate_diseases"))[:3]
+
+    labels = (
+        item.get("candidate_labels")
+        or item.get("candidate_disease_labels")
+        or item.get("candidates")
+    )
+    default_confidence = str(item.get("candidate_confidence") or "unknown").strip()
+    if default_confidence not in {"low", "moderate", "high", "very_high", "unknown"}:
+        default_confidence = "unknown"
+    supporting_evidence = _string_list(
+        item.get("candidate_supporting_evidence") or item.get("supporting_evidence"),
+        max_items=3,
+    )
+
+    candidates: List[Dict[str, Any]] = []
+    for label in _as_list(labels):
+        if isinstance(label, dict):
+            candidates.extend(normalize_candidate_diseases(label))
+            continue
+        disease = str(label).strip()
+        if not disease:
+            continue
+        candidates.append(
+            {
+                "disease": disease,
+                "confidence": default_confidence,
+                "supporting_evidence": supporting_evidence,
+            }
+        )
+        if len(candidates) >= 3:
+            break
+    return candidates[:3]
+
+
+def _collect_text(value: Any) -> List[str]:
+    collected: List[str] = []
+    if value is None:
+        return collected
+    if isinstance(value, dict):
+        for child in value.values():
+            collected.extend(_collect_text(child))
+        return collected
+    if isinstance(value, list):
+        for child in value:
+            collected.extend(_collect_text(child))
+        return collected
+    text = str(value).strip()
+    if text:
+        collected.append(text)
+    return collected
+
+
+def _observation_findings(item: Dict[str, Any]) -> List[str]:
+    for key in ["findings", "finding_notes", "observation_notes", "visual_findings"]:
+        if key in item:
+            return _string_list(_collect_text(item.get(key)), max_items=5)
+
+    fallback: List[str] = []
+    for key in [
+        "visible_structure_notes",
+        "structure_notes",
+        "visible_symptom_notes",
+        "symptom_notes",
+        "fine_visual_features",
+        "feature_notes",
+        "features",
+    ]:
+        fallback.extend(_collect_text(item.get(key)))
+    return _string_list(fallback, max_items=5)
+
+
+def _positive_observation_findings(findings: Sequence[str]) -> List[str]:
+    positive: List[str] = []
+    negation_markers = [
+        " no ",
+        " not ",
+        " without ",
+        " absence ",
+        " absent ",
+        " missing ",
+        " lacks ",
+        " lack ",
+        " not visible",
+        " not resolved",
+        " cannot be resolved",
+        " is not resolved",
+        " are not resolved",
+    ]
+    for finding in findings:
+        text = f" {_normalized_text(finding)} "
+        if any(marker in text for marker in negation_markers):
+            continue
+        _append_unique(positive, finding)
+    return positive
+
+
+def _visual_intake_from_observation(item: Dict[str, Any], *, fallback_order: int) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    image_quality = item.get("image_quality") if isinstance(item.get("image_quality"), dict) else {}
+    side_assessment = item.get("side_assessment") if isinstance(item.get("side_assessment"), dict) else {}
+    findings = _observation_findings(item)
+    positive_findings = _positive_observation_findings(findings)
+
+    image_order = (
+        _coerce_int(item.get("image_order"))
+        or _coerce_int(item.get("image_index"))
+        or _coerce_int(item.get("order"))
+        or fallback_order
+    )
+    side_label = (
+        normalize_side_label(item.get("side_label"))
+        or normalize_side_label(item.get("side"))
+        or normalize_side_label(item.get("visible_surface"))
+        or normalize_side_label(side_assessment.get("side_label"))
+        or "uncertain"
+    )
+    side_confidence = _coerce_confidence(
+        item.get("side_confidence")
+        or item.get("surface_confidence")
+        or side_assessment.get("confidence"),
+        default=0.0 if side_label == "uncertain" else 0.6,
+    )
+    quality_overall = (
+        normalize_quality_overall(item.get("quality_overall"))
+        or normalize_quality_overall(item.get("quality"))
+        or normalize_quality_overall(image_quality.get("overall"))
+        or "usable_with_caution"
+    )
+    quality_issues, issue_notes = canonical_quality_issues(
+        item.get("quality_issues")
+        if "quality_issues" in item
+        else image_quality.get("issues")
+    )
+    quality_notes = _string_list(
+        item.get("quality_notes")
+        or image_quality.get("quality_notes")
+        or item.get("limitations"),
+        max_items=3,
+    )
+    for note in issue_notes:
+        _append_unique(quality_notes, note)
+
+    diagnostic_impact = (
+        normalize_diagnostic_impact(item.get("diagnostic_impact"))
+        or normalize_diagnostic_impact(image_quality.get("diagnostic_impact"))
+        or _default_diagnostic_impact(quality_overall, quality_issues)
+    )
+    is_leaf_image = item.get("is_leaf_image")
+    if not isinstance(is_leaf_image, bool):
+        is_leaf_image = side_label != "not_leaf"
+
+    feature_source = (
+        item.get("fine_visual_features")
+        if "fine_visual_features" in item
+        else item.get("feature_notes") or item.get("features") or findings
+    )
+    visible_symptom_source = item.get("visible_symptoms") or item.get("symptoms") or positive_findings
+    visible_structure_source = item.get("visible_structures") or item.get("structures") or findings
+    symptom_notes = _string_list(
+        item.get("visible_symptom_notes") or item.get("symptom_notes") or findings,
+        max_items=4,
+    )
+    structure_notes = _string_list(
+        item.get("visible_structure_notes") or item.get("structure_notes") or findings,
+        max_items=4,
+    )
+
+    visual_intake = {
+        "image_order": image_order,
+        "is_leaf_image": is_leaf_image,
+        "image_quality": {
+            "overall": quality_overall,
+            "issues": quality_issues,
+            "diagnostic_impact": diagnostic_impact,
+            "quality_notes": quality_notes[:4],
+        },
+        "side_assessment": {
+            "side_label": side_label,
+            "confidence": side_confidence,
+        },
+        "visible_symptoms": _string_list(visible_symptom_source, max_items=8),
+        "visible_symptom_notes": symptom_notes,
+        "visible_structures": _string_list(visible_structure_source, max_items=8),
+        "visible_structure_notes": structure_notes,
+        "symptom_locations": _string_list(
+            item.get("symptom_locations") or item.get("locations"),
+            max_items=5,
+        ),
+        "fine_visual_features": normalize_fine_visual_features(
+            feature_source,
+            default_surface=side_label,
+        )[:4],
+        "candidate_diseases": _candidate_diseases_from_observation(item),
+        "intake_summary": str(item.get("intake_summary") or item.get("summary") or "").strip()
+        or "Visual observation recorded.",
+    }
+    visual_intake = normalize_visual_intake_payload(visual_intake)
+    known_image_update = {
+        "image_order": image_order,
+        "side_label": side_label,
+        "quality_overall": quality_overall,
+    }
+    return known_image_update, visual_intake
+
+
+def _first_surface_from_intakes(visual_intakes: Sequence[Dict[str, Any]]) -> str | None:
+    for item in visual_intakes:
+        if not isinstance(item, dict):
+            continue
+        side_assessment = item.get("side_assessment")
+        side = normalize_side_label((side_assessment or {}).get("side_label")) if isinstance(side_assessment, dict) else None
+        if side and side not in {"uncertain", "mixed", "not_leaf"}:
+            return side
+    return None
+
+
+def _derive_evidence_sufficiency(
+    *,
+    explicit_value: Any,
+    recommended_next_image: str | None,
+    visual_intakes: Sequence[Dict[str, Any]],
+    diagnosis_verdict: Any,
+) -> str:
+    normalized = normalize_evidence_sufficiency(explicit_value)
+    if normalized:
+        return normalized
+    if recommended_next_image == "close_up_symptomatic_area":
+        return "insufficient_need_better_quality"
+    if recommended_next_image == "opposite_surface_same_leaf":
+        return "insufficient_need_opposite_surface"
+    if recommended_next_image == "adaxial_surface":
+        return "insufficient_need_adaxial"
+    if recommended_next_image == "abaxial_surface":
+        return "insufficient_need_abaxial"
+
+    text = _normalized_text(diagnosis_verdict)
+    if any(token in text for token in ["confirmed", "sufficient", "diagnostic"]):
+        return "sufficient_single_surface"
+    if any(token in text for token in ["possible", "not confirmed", "uncertain", "insufficient"]):
+        return "uncertain"
+
+    has_nonblocking_limitations = any(
+        isinstance(item, dict)
+        and isinstance(item.get("image_quality"), dict)
+        and item["image_quality"].get("diagnostic_impact") == "minor_nonblocking"
+        for item in visual_intakes
+    )
+    if visual_intakes and recommended_next_image is None and has_nonblocking_limitations:
+        return "sufficient_with_nonblocking_limitations"
+    if visual_intakes and recommended_next_image is None:
+        return "uncertain"
+    return "uncertain"
+
+
+def _derive_single_surface_assessment(
+    *,
+    explicit_value: Any,
+    recommended_next_image: str | None,
+    visual_intakes: Sequence[Dict[str, Any]],
+    evidence_sufficiency: str,
+) -> Dict[str, Any] | None:
+    if isinstance(explicit_value, dict):
+        return explicit_value
+    if explicit_value is not None:
+        return {"note": str(explicit_value)}
+
+    surface = _first_surface_from_intakes(visual_intakes)
+    if not surface:
+        return None
+
+    if recommended_next_image == "opposite_surface_same_leaf":
+        decision = "needs_opposite_surface"
+        opposite_role = "needed_for_specific_uncertainty"
+        rationale = "The visible surface does not resolve the remaining diagnostic uncertainty."
+    elif recommended_next_image in {"adaxial_surface", "abaxial_surface"}:
+        decision = "needs_specific_surface"
+        opposite_role = "needed_for_specific_uncertainty"
+        rationale = "A specific surface is needed to resolve the remaining diagnostic uncertainty."
+    elif recommended_next_image == "close_up_symptomatic_area":
+        decision = "nondiagnostic"
+        opposite_role = "not_needed_yet"
+        rationale = "The main uncertainty is unresolved detail on the visible symptomatic surface."
+    elif evidence_sufficiency.startswith("sufficient"):
+        decision = "diagnostic_single_surface"
+        opposite_role = "not_needed"
+        rationale = "The visible surface provides enough diagnostic evidence for the current conservative assessment."
+    else:
+        decision = "nondiagnostic"
+        opposite_role = "not_needed_yet"
+        rationale = "The visible surface is not yet diagnostic enough for a confirmed assessment."
+
+    return {
+        "visible_surface": surface,
+        "single_surface_decision": decision,
+        "opposite_surface_role": opposite_role,
+        "rationale": rationale,
+    }
+
+
+def expand_compact_memory_update(memory_update: Dict[str, Any]) -> Dict[str, Any]:
+    """Expand model semantic shortcuts into the persisted memory_update shape."""
+    normalized = copy.deepcopy(memory_update)
+
+    observations = None
+    for key in ["image_observations", "visual_observations", "image_deltas", "visual_delta"]:
+        if key in normalized:
+            observations = normalized.pop(key)
+            break
+    observation_items = observations if isinstance(observations, list) else _as_list(observations)
+
+    generated_known_updates: List[Dict[str, Any]] = []
+    generated_visual_intakes: List[Dict[str, Any]] = []
+    for idx, item in enumerate(observation_items, start=1):
+        if not isinstance(item, dict):
+            continue
+        known_update, visual_intake = _visual_intake_from_observation(item, fallback_order=idx)
+        generated_known_updates.append(known_update)
+        generated_visual_intakes.append(visual_intake)
+
+    if generated_known_updates and (
+        not isinstance(normalized.get("known_image_updates"), list)
+        or not normalized.get("known_image_updates")
+    ):
+        normalized["known_image_updates"] = generated_known_updates
+    if generated_visual_intakes and (
+        not isinstance(normalized.get("visual_intakes"), list)
+        or not normalized.get("visual_intakes")
+    ):
+        normalized["visual_intakes"] = generated_visual_intakes
+
+    if "present_evidence" in normalized and "evidence_present" not in normalized:
+        normalized["evidence_present"] = normalized.pop("present_evidence")
+    if "missing_evidence" in normalized and "evidence_missing" not in normalized:
+        normalized["evidence_missing"] = normalized.pop("missing_evidence")
+    if "uncertainties" in normalized and "open_questions" not in normalized:
+        normalized["open_questions"] = normalized.pop("uncertainties")
+    if "nonblocking_limitations" in normalized and "nonblocking_image_limitations" not in normalized:
+        normalized["nonblocking_image_limitations"] = normalized.pop("nonblocking_limitations")
+    if "image_limitations" in normalized and "nonblocking_image_limitations" not in normalized:
+        normalized["nonblocking_image_limitations"] = normalized.pop("image_limitations")
+
+    next_image_need = normalized.pop("next_image_need", None)
+    if "recommended_next_image" in normalized:
+        normalized["recommended_next_image"] = normalize_recommended_next_image(
+            normalized.get("recommended_next_image")
+        )
+    else:
+        normalized["recommended_next_image"] = normalize_recommended_next_image(next_image_need)
+
+    diagnosis_verdict = normalized.pop("diagnosis_verdict", None)
+    visual_intakes = normalized.get("visual_intakes") if isinstance(normalized.get("visual_intakes"), list) else []
+    evidence_sufficiency = _derive_evidence_sufficiency(
+        explicit_value=normalized.get("evidence_sufficiency"),
+        recommended_next_image=normalized.get("recommended_next_image"),
+        visual_intakes=visual_intakes,
+        diagnosis_verdict=diagnosis_verdict,
+    )
+    normalized["evidence_sufficiency"] = evidence_sufficiency
+    normalized["single_surface_assessment"] = _derive_single_surface_assessment(
+        explicit_value=normalized.get("single_surface_assessment"),
+        recommended_next_image=normalized.get("recommended_next_image"),
+        visual_intakes=visual_intakes,
+        evidence_sufficiency=evidence_sufficiency,
+    )
+
+    normalized.setdefault("summary", "")
+    normalized.setdefault("user_goal", None)
+    normalized.setdefault("current_diagnosis", None)
+    normalized.setdefault("evidence_present", [])
+    normalized.setdefault("evidence_missing", [])
+    normalized.setdefault("nonblocking_image_limitations", [])
+    normalized.setdefault("allowed_follow_up_questions", [])
+    normalized.setdefault("open_questions", [])
+
+    for key in [
+        "evidence_present",
+        "evidence_missing",
+        "nonblocking_image_limitations",
+        "allowed_follow_up_questions",
+        "open_questions",
+    ]:
+        normalized[key] = _string_list(normalized.get(key), max_items=8 if key != "open_questions" else 5)
+
+    return normalized
+
+
 def normalize_visual_intake_payload(item: Any) -> Any:
     if not isinstance(item, dict):
         return item
@@ -688,8 +1166,14 @@ def normalize_assistant_envelope_payload(value: Any) -> Any:
     # Routing and selected agent path are code-owned turn metadata, not model-owned memory.
     normalized.pop("agent_trace", None)
     memory_update = normalized.get("memory_update")
+    if not isinstance(memory_update, dict) and isinstance(normalized.get("memory_delta"), dict):
+        memory_update = normalized.pop("memory_delta")
+        normalized["memory_update"] = memory_update
     if not isinstance(memory_update, dict):
         return normalized
+    normalized.pop("memory_delta", None)
+    memory_update = expand_compact_memory_update(memory_update)
+    normalized["memory_update"] = memory_update
 
     if isinstance(memory_update.get("known_image_updates"), list):
         memory_update["known_image_updates"] = [
@@ -839,10 +1323,25 @@ Validation errors:
 
 The corrected response must have:
 - assistant_message: non-empty English natural language string for the user.
-- memory_update: structured object for session memory.
+- memory_update: compact structured object for session memory.
+- for visual/image turns, use memory_update.image_observations[] only for
+  per-image fields such as image_order, side_label, quality_overall,
+  quality_issues, findings, candidate_labels, candidate_confidence,
+  candidate_supporting_evidence, and intake_summary.
+- findings should be 1-3 natural-language sentences combining structures,
+  symptoms, locations, and diagnostic texture. Do not split findings into
+  visible_symptoms, visible_structures, symptom_locations, symptom_notes,
+  structure_notes, or feature_notes.
+- put evidence_present, evidence_missing, next_image_need, and open_questions
+  at the memory_update top level.
+- do not output full known_image_updates, visual_intakes, image_quality objects,
+  side_assessment objects, fine_visual_features objects, candidate_diseases
+  objects, evidence_sufficiency, single_surface_assessment, or
+  recommended_next_image. App code expands compact observations into the schema.
 - no agent_trace; route and selected agent path are code-owned turn metadata.
 - no code-owned fields inside memory_update, including session_id, turn_id,
-  image_id, image_path, visual_intake_id, created_at, or updated_at.
+  image_id, image_path, image_uri, image_role, visual_intake_id, created_at,
+  updated_at, first_seen_turn_id, last_seen_turn_id, or source.
 
 Original task prompt:
 {trim_text(original_prompt, 6000)}
@@ -1555,6 +2054,69 @@ def render_recent_messages(messages: Sequence[Dict[str, Any]]) -> str:
         suffix = f" image_refs={image_refs}" if image_refs else ""
         lines.append(f"{msg['role'].upper()}[{msg['turn_id']}]{suffix}: {msg['content']}")
     return "\n".join(lines)
+
+
+def compact_memory_for_prompt(memory: Dict[str, Any]) -> Dict[str, Any]:
+    memory_dict = memory if isinstance(memory, dict) else default_memory()
+    known_images = []
+    known_by_id: Dict[str, str] = {}
+    for item in memory_dict.get("known_images", []):
+        normalized = normalize_known_image_item(item)
+        if not normalized:
+            continue
+        image_id = str(normalized.get("image_id") or "")
+        image_path = str(normalized.get("image_path") or "")
+        if image_id and image_path:
+            known_by_id[image_id] = image_path
+        known_images.append(
+            {
+                "image_path": image_path,
+                "side_label": normalized.get("side_label"),
+                "quality_overall": normalized.get("quality_overall"),
+            }
+        )
+
+    visual_intake_summaries = []
+    for item in memory_dict.get("visual_intakes", []):
+        if not isinstance(item, dict):
+            continue
+        side_assessment = item.get("side_assessment") if isinstance(item.get("side_assessment"), dict) else {}
+        image_quality = item.get("image_quality") if isinstance(item.get("image_quality"), dict) else {}
+        candidates = []
+        for candidate in item.get("candidate_diseases", []) if isinstance(item.get("candidate_diseases"), list) else []:
+            if not isinstance(candidate, dict):
+                continue
+            disease = str(candidate.get("disease") or "").strip()
+            if not disease:
+                continue
+            confidence = str(candidate.get("confidence") or "unknown").strip()
+            candidates.append(f"{disease}:{confidence}")
+            if len(candidates) >= 3:
+                break
+        image_id = str(item.get("image_id") or "")
+        visual_intake_summaries.append(
+            {
+                "image_path": known_by_id.get(image_id),
+                "side_label": side_assessment.get("side_label"),
+                "quality_overall": image_quality.get("overall"),
+                "visible_symptoms": _string_list(item.get("visible_symptoms"), max_items=6),
+                "candidate_diseases": candidates,
+                "intake_summary": trim_text(str(item.get("intake_summary") or ""), 320),
+            }
+        )
+
+    return {
+        "summary": trim_text(str(memory_dict.get("summary") or ""), 500),
+        "user_goal": memory_dict.get("user_goal"),
+        "current_diagnosis": memory_dict.get("current_diagnosis"),
+        "evidence_sufficiency": memory_dict.get("evidence_sufficiency"),
+        "known_images": known_images[-8:],
+        "visual_intake_summaries": visual_intake_summaries[-8:],
+        "evidence_present": _string_list(memory_dict.get("evidence_present"), max_items=6),
+        "evidence_missing": _string_list(memory_dict.get("evidence_missing"), max_items=6),
+        "recommended_next_image": memory_dict.get("recommended_next_image"),
+        "open_questions": _string_list(memory_dict.get("open_questions"), max_items=5),
+    }
 
 
 def render_pages(pages: Sequence[Dict[str, Any]]) -> str:

@@ -17,8 +17,7 @@ uncertainty.
 Use when the user provides an image:
 
 ```text
-First I will check whether this is a grape leaf, whether the image is clear
-enough, which leaf surface is visible, and what symptoms are actually visible.
+First I will check whether this is a grape leaf, whether the image is clear enough, which leaf surface is visible, and what symptoms are actually visible.
 ```
 
 The observation should include:
@@ -33,26 +32,12 @@ visible abnormal signs
 evidence still missing
 ```
 
-## Quality Retry Script
-
-Use when image quality blocks inspection:
-
-```text
-I cannot reliably inspect the symptomatic area because the image is too blurry,
-dark, overexposed, or occluded. Please upload a clearer image of the same leaf
-surface with the affected area in focus.
-```
-
-Do not use this script for minor lighting, angle, shadow, or partial occlusion
-when the symptomatic leaf area remains visible.
-
 ## Missing Surface Script
 
 Use when the opposite surface is diagnostically important:
 
 ```text
-This image shows only one side of the leaf. Please upload the other side of the
-same leaf so I can compare surface symptoms before making a stronger diagnosis.
+This image shows only one side of the leaf. Please upload the other side of the same leaf so I can compare surface symptoms before making a stronger diagnosis.
 ```
 
 If the missing side is known:
@@ -67,24 +52,15 @@ Please upload the upper side of the same leaf.
 Use when one visible side has high-signal disease-specific evidence:
 
 ```text
-This side of the leaf shows enough specific evidence for a diagnosis. The
-opposite side could help confirm the pattern, but it is not required for this
-assessment.
+This side of the leaf shows enough specific evidence for a diagnosis. The opposite side could help confirm the pattern, but it is not required for this assessment.
 ```
-
-For powdery mildew, this may include visible superficial white-gray powdery
-colonies, dusty conidia, webby mycelium, or dark chasmothecia. For downy
-mildew, this may include clear oil spots, angular vein-limited lesions, or
-white cottony underside sporulation.
 
 ## Differential Diagnosis Script
 
 Use when symptoms overlap:
 
 ```text
-This evidence could fit more than one condition. I will keep the diagnosis
-provisional and compare the visible symptoms against the most likely
-differentials.
+This evidence could fit more than one condition. I will keep the diagnosis provisional and compare the visible symptoms against the most likely differentials.
 ```
 
 The response should state:
@@ -101,34 +77,13 @@ next image or observation needed
 Use when the image does not support reliable diagnosis:
 
 ```text
-I cannot make a reliable disease diagnosis from this evidence alone. The main
-missing evidence is: [specific missing evidence]. The most useful next image is:
+I cannot make a reliable disease diagnosis from this evidence alone. The main missing evidence is: [specific missing evidence]. The most useful next image is:
 [specific next image].
 ```
 
 ## Treatment Question Script
 
 Use when the user asks what to do:
-
-```text
-Before recommending management, I need a sufficiently supported diagnosis and a
-reviewed treatment resource. From the current evidence, I can explain what is
-missing, but I should not give a specific treatment recommendation.
-```
-
-If a reviewed treatment resource is available, cite it and keep the diagnosis
-confidence clear.
-
-## Expert Review Script
-
-Use when a case needs human review:
-
-```text
-Send the visible evidence summary, provisional diagnosis, evidence present,
-evidence missing, and main uncertainty to the reviewer. Ask the reviewer to
-confirm the label, explain the visual rationale, and identify any missing
-front/back evidence or treatment source requirements.
-```
 
 See [Visual Observation Sequence](../procedures/visual_observation_sequence.md),
 [Evidence Sufficiency](../workflows/evidence_sufficiency.md),

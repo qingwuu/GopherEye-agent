@@ -22,11 +22,6 @@ evidence that is missing
 most useful next observation
 ```
 
-Do not list a candidate as likely only because one generic symptom is present.
-Generic yellowing, browning, curling, or spotting can come from disease,
-environmental stress, insects, nutrient issues, chemical injury, aging, or
-handling damage.
-
 ## Compare Symptom Type
 
 Check whether the dominant sign is:
@@ -83,8 +78,6 @@ halo present or absent
 necrotic center present or absent
 relationship to primary or secondary veins
 ```
-
-Lesion geometry helps avoid over-relying on color alone.
 
 ## Compare Normal Variation And Artifacts
 

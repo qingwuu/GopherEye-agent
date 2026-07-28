@@ -264,60 +264,39 @@ def build_frontier_prompt(
     }
     return f"""You are GopherEye's frontier multi-agent diagnostic app.
 
-Return ONLY valid JSON with this exact top-level shape:
+Return ONLY valid JSON with this compact top-level shape:
 {{
   "assistant_message": "short app-ready English answer to the user",
   "memory_update": {{
     "summary": "compact memory of the session so far",
     "user_goal": null,
     "current_diagnosis": null,
-    "known_image_updates": [
-      {{
-        "image_order": 1,
-        "side_label": null,
-        "quality_overall": null
-      }}
-    ],
-    "visual_intakes": [
+    "image_observations": [
       {{
         "image_order": 1,
         "is_leaf_image": true,
-        "image_quality": {{
-          "overall": "good",
-          "issues": [],
-          "diagnostic_impact": "none",
-          "quality_notes": []
-        }},
-        "side_assessment": {{"side_label": "uncertain", "confidence": 0.0}},
-        "visible_symptoms": [],
-        "visible_symptom_notes": [],
-        "visible_structures": [],
-        "visible_structure_notes": [],
-        "symptom_locations": [],
-        "fine_visual_features": [
-          {{
-            "feature": "short observed feature",
-            "surface": "uncertain",
-            "location": "short location",
-            "diagnostic_relevance": "why this feature matters"
-          }}
+        "side_label": "uncertain",
+        "side_confidence": 0.0,
+        "quality_overall": "good",
+        "quality_issues": [],
+        "diagnostic_impact": "none",
+        "quality_notes": [],
+        "findings": [
+          "Surface/structure: short sentence covering visible surface and structures.",
+          "Symptoms/location: short sentence covering symptoms and where they occur.",
+          "Diagnostic texture: short sentence covering fungal texture and uncertainty."
         ],
-        "candidate_diseases": [
-          {{
-            "disease": "powdery mildew",
-            "confidence": "unknown",
-            "supporting_evidence": []
-          }}
-        ],
+        "candidate_labels": [],
+        "candidate_confidence": "unknown",
+        "candidate_supporting_evidence": [],
         "intake_summary": "short visual evidence summary"
       }}
     ],
     "evidence_present": [],
     "evidence_missing": [],
-    "evidence_sufficiency": "uncertain",
-    "single_surface_assessment": null,
-    "nonblocking_image_limitations": [],
-    "recommended_next_image": null,
+    "diagnosis_verdict": "possible_not_confirmed",
+    "next_image_need": null,
+    "nonblocking_limitations": [],
     "allowed_follow_up_questions": [],
     "open_questions": []
   }}
@@ -347,30 +326,38 @@ Rules:
 - Treat lighting, shadows, angle, and partial occlusion as nonblocking unless
   they prevent inspection of the relevant leaf features.
 - Do not recommend treatment unless a reviewed management page is included.
-- If images are attached, inspect pixels and update known_image_updates and visual_intakes.
+- If images are attached, inspect pixels and output one image_observations item
+  per inspected attached image. Use image_order from the attached image manifest.
 - If no image pixels are attached, rely only on memory, transcript, selected context pages, and user text.
-- In image_quality, use only overall values good, usable_with_caution, or
-  unusable; use only diagnostic_impact values none, minor_nonblocking, or
-  blocks_symptom_inspection.
-- In visible_symptoms and visible_structures, use canonical schema tokens only;
-  put natural-language details in the corresponding *_notes fields.
-- In fine_visual_features, every item must be an object with feature, surface,
-  location, and diagnostic_relevance.
-- In candidate_diseases, every item must be an object with disease,
-  confidence, and supporting_evidence. Do not output disease names as bare strings.
-- Use evidence_sufficiency only from sufficient, sufficient_single_surface,
-  sufficient_both_surfaces, sufficient_with_nonblocking_limitations,
-  insufficient_need_adaxial, insufficient_need_abaxial,
-  insufficient_need_opposite_surface, insufficient_need_better_quality, or uncertain.
-- single_surface_assessment must be null or an object, not a string.
+- Do not output known_image_updates, visual_intakes, image_quality objects,
+  side_assessment objects, fine_visual_features objects, candidate_diseases
+  objects, evidence_sufficiency, single_surface_assessment, recommended_next_image,
+  or any ID/timestamp/source fields. App code expands compact observations into
+  the persisted schema.
+- Use only image_observations compact fields. Keep lists short: evidence lists
+  max 5 items, findings max 3 sentences, quality_notes max 2 items,
+  candidate_labels max 2 items, candidate_supporting_evidence max 2 items.
+- quality_overall must be good, usable_with_caution, or unusable.
+- quality_issues should use blurry, dark, overexposed, poor_angle, occluded,
+  low_resolution, or duplicate.
+- diagnostic_impact must be none, minor_nonblocking, or blocks_symptom_inspection.
+- findings must combine structure, symptoms, locations, and fine diagnostic
+  texture into readable natural-language sentences. Do not split them into
+  visible_structures, visible_symptoms, symptom_locations, symptom_notes,
+  structure_notes, or feature_notes; app code extracts canonical tags where useful.
+- candidate_labels should be disease names as short strings. candidate_confidence
+  must be low, moderate, high, very_high, or unknown.
+- next_image_need must be null, close_up_same_surface, opposite_surface,
+  adaxial_surface, or abaxial_surface.
+- diagnosis_verdict should be confirmed, possible_not_confirmed, insufficient,
+  or uncertain.
 - Do not create or modify session_id, turn_id, image_id, image_path,
-  visual_intake_id, created_at, or updated_at fields.
-- For image-specific updates, use only image_order from the attached image manifest.
+  image_uri, image_role, visual_intake_id, created_at, updated_at,
+  first_seen_turn_id, last_seen_turn_id, or source fields.
 - Do not output agent_trace. Route, selected agent path, and context metadata are
   recorded by app code outside the model JSON.
 - Use canonical values when obvious, and put natural-language botanical detail in
-  quality_notes, visible_symptom_notes, visible_structure_notes,
-  fine_visual_features[].feature, evidence_present, evidence_missing, or intake_summary.
+  findings, quality_notes, evidence_present, evidence_missing, or intake_summary.
 
 Model profile:
 {profile_name}
@@ -379,7 +366,8 @@ Route:
 {json.dumps(route, ensure_ascii=False, indent=2)}
 
 Current short-term memory JSON:
-{json.dumps(session.get("short_term_memory", wiki_chat.default_memory()), ensure_ascii=False, indent=2)}
+(compact view; code-owned IDs, timestamps, and full schema objects are omitted)
+{json.dumps(wiki_chat.compact_memory_for_prompt(session.get("short_term_memory", wiki_chat.default_memory())), ensure_ascii=False, indent=2)}
 
 Recent transcript, last {recent_turns} messages:
 {wiki_chat.render_recent_messages(wiki_chat.recent_messages(session, recent_turns, exclude_last=True))}
