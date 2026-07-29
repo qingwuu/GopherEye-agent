@@ -16,20 +16,18 @@ DEFAULT_SYSTEM_DIR = REPO_ROOT / "system"
 DEFAULT_SYSTEM_CATALOG_DIR = REPO_ROOT / "catalog" / "system"
 CORE_WIKI_CONTEXT_BY_TASK = {
     "visual_intake_or_diagnosis": [
-        "procedures/whole_diagnosis_process.md",
-        "procedures/visual_observation_sequence.md",
-        "procedures/symptom_localization_procedure.md",
-        "workflows/evidence_sufficiency.md",
-        "workflows/front_back_leaf_process.md",
-        "diseases/powdery_mildew.md",
-        "diseases/downy_mildew.md",
+        "procedures/diagnosis_sop.md",
+        "procedures/image_and_evidence_sop.md",
+        "disease/powdery_mildew/index.md",
+        "disease/downy_mildew/index.md",
+        "disease/healthy/index.md",
+        "disease/others/index.md",
     ],
     "grape_leaf_chat": [
-        "procedures/whole_diagnosis_process.md",
-        "procedures/visual_observation_sequence.md",
-        "workflows/evidence_sufficiency.md",
-        "diseases/powdery_mildew.md",
-        "diseases/downy_mildew.md",
+        "procedures/diagnosis_sop.md",
+        "procedures/image_and_evidence_sop.md",
+        "disease/powdery_mildew/index.md",
+        "disease/downy_mildew/index.md",
     ],
 }
 CORE_SYSTEM_CONTEXT_BY_TASK = {

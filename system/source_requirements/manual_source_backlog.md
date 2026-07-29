@@ -2,7 +2,7 @@
 title: Manual Source Backlog
 page_type: source_requirement
 review_status: draft
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 sources: []
 ---
 
@@ -91,6 +91,6 @@ treatment question guardrails
 handoff-to-expert conditions
 ```
 
-See [Expert Information And Examples](../../wiki/expert_information/expert_information_and_examples.md),
-[Treatment Resource Policy](../../wiki/treatment_resources/treatment_resource_policy.md), and
-[Diagnosis Scripts](../../wiki/diagnosis/diagnosis_scripts.md).
+See [Source Policy](../../wiki/reference/source_policy.md),
+[Diagnosis SOP](../../wiki/procedures/diagnosis_sop.md), and
+[Other Or Unresolved Conditions](../../wiki/disease/others/index.md).

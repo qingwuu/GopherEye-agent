@@ -1,4 +1,4 @@
-# Data Agent Runtime
+# Session Archive Runtime
 
 ## Runtime Layout
 
@@ -34,28 +34,33 @@ data_agent/
 
 ## Commands
 
-Create the runtime folders:
+Archive all capture-worthy Frontier session turns, generate review templates,
+copy local images when available, rebuild queue indexes, and rebuild the
+reviewed dataset index:
 
 ```bash
-python tools/data_agent.py init
+python tools/session_archiver.py
 ```
 
-Capture the latest visual diagnosis turn from an existing Frontier session:
+The explicit form is:
 
 ```bash
-python tools/data_agent.py capture-turn --session-path sessions/frontier/<session>.json
+python tools/session_archiver.py archive-all
 ```
 
-Optionally copy local image files into `data_agent/uploads/images/`:
+By default this scans:
 
-```bash
-python tools/data_agent.py capture-turn --session-path sessions/frontier/<session>.json --copy-images
+```text
+sessions/frontier/*.json
 ```
+
+It archives visual/image turns only. Pure chat turns are skipped unless the
+debug option `--include-all-turns` is used.
 
 List records waiting for human review:
 
 ```bash
-python tools/data_agent.py list-pending
+python tools/session_archiver.py list-pending
 ```
 
 Human review first version:
@@ -63,21 +68,23 @@ Human review first version:
 ```text
 1. Copy human_review.template.json to human_review.submitted.json.
 2. Edit reviewer, reviewed_at, review_status, decision, and human_reviewed_label.
-3. Import the submitted JSON with the CLI.
+3. Run the archivist again to refresh queues and reviewed_dataset_index.jsonl.
 ```
 
 ```bash
-python tools/data_agent.py import-review --instance-id <instance_id>
+python tools/session_archiver.py
 ```
 
-Build the ground-truth dataset index from imported human reviews:
+Single-turn capture and manual index commands still exist for debugging:
 
 ```bash
-python tools/data_agent.py build-reviewed-index
+python tools/session_archiver.py capture-turn --session-path sessions/frontier/<session>.json
+python tools/session_archiver.py rebuild-indexes
+python tools/session_archiver.py build-reviewed-index
 ```
 
 Validate one instance:
 
 ```bash
-python tools/data_agent.py validate-instance <instance_id>
+python tools/session_archiver.py validate-instance <instance_id>
 ```

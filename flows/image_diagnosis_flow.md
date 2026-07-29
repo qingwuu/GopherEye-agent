@@ -84,8 +84,9 @@ same leaf only if it would separate powdery mildew, downy mildew, or artifact.
 The diagnosis flow should use these pages when visual localization matters:
 
 ```text
-wiki/grape_leaf/anatomy.md
-wiki/grape_leaf/leaf_surfaces.md
-wiki/grape_leaf/normal_variation.md
-wiki/grape_leaf/image_guidance.md
+wiki/procedures/diagnosis_sop.md
+wiki/procedures/image_and_evidence_sop.md
+wiki/reference/grape_leaf_anatomy.md
+wiki/reference/terminology.md
+wiki/disease/healthy/index.md
 ```

@@ -2,7 +2,7 @@
 title: Agent Context Reading Policy
 page_type: system_page
 review_status: draft
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 sources: []
 ---
 
@@ -58,18 +58,17 @@ For image-based diagnosis, the retrieval layer should prefer these botanical
 procedure pages:
 
 ```text
-wiki/procedures/whole_diagnosis_process.md
-wiki/procedures/visual_observation_sequence.md
-wiki/procedures/symptom_localization_procedure.md
-wiki/workflows/evidence_sufficiency.md
-wiki/workflows/front_back_leaf_process.md
-wiki/diseases/powdery_mildew.md
-wiki/diseases/downy_mildew.md
+wiki/procedures/diagnosis_sop.md
+wiki/procedures/image_and_evidence_sop.md
+wiki/disease/powdery_mildew/index.md
+wiki/disease/downy_mildew/index.md
+wiki/disease/healthy/index.md
+wiki/disease/others/index.md
 ```
 
 Additional pages should be selected by the current question and image context,
-for example grape leaf anatomy, leaf surfaces, normal variation, dialog scripts,
-other disease pages, or treatment resources.
+for example reference terminology, grape leaf anatomy, treatment pages, or
+newly promoted disease pages.
 
 ## Prompt Assembly Principle
 
