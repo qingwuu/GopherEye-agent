@@ -1,0 +1,28 @@
+# Core CLI/runtime
+typer
+rich
+pydantic
+
+# LLM planners and agent frameworks
+openai
+anthropic
+openai-agents
+mcp
+
+# Vision workers
+ultralytics
+# SAM2 official install is environment-specific, especially on Windows.
+# Install from https://github.com/facebookresearch/sam2 and make module `sam2` importable.
+albumentations
+numpy
+pillow
+
+# Dataset curation, annotation, publishing, and tracking
+fiftyone
+label-studio-sdk
+huggingface-hub
+mlflow
+dvc
+lakefs
+lancedb
+duckdb

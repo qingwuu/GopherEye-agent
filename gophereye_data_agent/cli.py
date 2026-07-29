@@ -1,0 +1,343 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from src.gophereye_runtime.utils import read_json, safe_print, write_json
+
+from . import __version__
+from .agents_runtime import agents_sdk_status
+from .executor import execute_plan
+from .mcp_server import mcp_status, run_mcp_server
+from .pair_import import import_image_pairs
+from .paths import normalize_path, root_relative
+from .planner import make_plan
+from .schemas import DataOperation, JsonPatchAction, OperationPlan, OperationType, TargetSelector
+
+
+app = typer.Typer(help="Independent GopherEye Data Agent CLI.")
+console = Console()
+CLI_DEFAULT_WORKSPACE_ROOT = Path("gophereye_data_workspace")
+CLI_DEFAULT_JOB_ROOT = Path("gophereye_data_workspace/jobs")
+
+
+def print_json(value: object) -> None:
+    safe_print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
+@app.command()
+def doctor() -> None:
+    """Show local optional dependency status."""
+    modules = [
+        ("OpenAI Agents SDK", "agents", agents_sdk_status()),
+        ("MCP", "mcp", mcp_status()),
+        ("Typer", "typer", None),
+        ("Pydantic", "pydantic", None),
+        ("Ultralytics YOLO", "ultralytics", None),
+        ("SAM2", "sam2", None),
+        ("Albumentations", "albumentations", None),
+        ("FiftyOne", "fiftyone", None),
+        ("Label Studio SDK", "label_studio_sdk", None),
+        ("Hugging Face Hub", "huggingface_hub", None),
+        ("MLflow", "mlflow", None),
+        ("DVC", "dvc", None),
+        ("lakeFS", "lakefs", None),
+        ("LanceDB", "lancedb", None),
+        ("DuckDB", "duckdb", None),
+    ]
+    table = Table(title=f"GopherEye Data Agent {__version__}")
+    table.add_column("Tool")
+    table.add_column("Module")
+    table.add_column("Available")
+    table.add_column("Note")
+    for label, module, status in modules:
+        available = importlib.util.find_spec(module) is not None
+        note = ""
+        if status and not status.get("available"):
+            note = str(status.get("error") or "")
+        table.add_row(label, module, "yes" if available else "no", note)
+    console.print(table)
+
+
+@app.command("schema")
+def schema_command() -> None:
+    """Print the operation plan JSON schema."""
+    print_json(OperationPlan.model_json_schema())
+
+
+@app.command("import-pairs")
+def import_pairs(
+    image_root: Annotated[Path, typer.Argument(help="Root containing numbered pair folders, e.g. images/.")],
+    pair_ids: Annotated[str | None, typer.Option(help="Comma-separated pair folder ids, e.g. 1,2.")] = None,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root to create or update.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    copy_images: Annotated[bool, typer.Option(help="Copy images into the workspace. Default references original files.")] = False,
+    overwrite: Annotated[bool, typer.Option(help="Overwrite existing imported pair instances.")] = True,
+) -> None:
+    """Import numbered leaf front/back image-pair folders as workspace instances."""
+    ids = [item.strip() for item in pair_ids.split(",") if item.strip()] if pair_ids else None
+    result = import_image_pairs(
+        normalize_path(image_root),
+        workspace_root=normalize_path(workspace_root),
+        pair_ids=ids,
+        copy_images=copy_images,
+        overwrite=overwrite,
+    )
+    print_json(result)
+
+
+@app.command()
+def plan(
+    prompt: Annotated[str, typer.Argument(help="Natural-language data operation request.")],
+    planner: Annotated[str, typer.Option(help="rule, openai, or anthropic.")] = "rule",
+    model: Annotated[str | None, typer.Option(help="Planner model name.")] = None,
+    out: Annotated[Path | None, typer.Option(help="Optional JSON output path.")] = None,
+) -> None:
+    """Create an operation plan without executing it."""
+    operation_plan = make_plan(prompt, planner=planner, model=model)
+    if out:
+        write_json(normalize_path(out), operation_plan.model_dump())
+        console.print(f"Wrote {root_relative(normalize_path(out))}")
+    print_json(operation_plan.model_dump())
+
+
+@app.command()
+def run(
+    prompt: Annotated[str, typer.Argument(help="Natural-language data operation request.")],
+    planner: Annotated[str, typer.Option(help="rule, openai, or anthropic.")] = "rule",
+    model: Annotated[str | None, typer.Option(help="Planner model name.")] = None,
+    apply: Annotated[bool, typer.Option(help="Apply modifying operations. Default is dry-run.")] = False,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Plan and execute a Data Agent job."""
+    operation_plan = make_plan(prompt, planner=planner, model=model)
+    result = execute_plan(
+        operation_plan,
+        apply=apply,
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command()
+def apply(
+    plan_path: Annotated[Path, typer.Argument(help="Path to operation_plan.json.")],
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Apply a saved operation plan."""
+    raw = read_json(normalize_path(plan_path))
+    operation_plan = OperationPlan.model_validate(raw)
+    result = execute_plan(
+        operation_plan,
+        apply=True,
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command()
+def modify(
+    json_pointer: Annotated[str, typer.Argument(help="JSON pointer, e.g. /corrections/group_id.")],
+    value: Annotated[str, typer.Argument(help="String value to write.")],
+    file: Annotated[str, typer.Option(help="manifest, model_label, human_review_template, upload_record, etc.")] = "human_review_template",
+    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
+    apply: Annotated[bool, typer.Option(help="Apply writes. Default is dry-run.")] = False,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Build and run a focused instance JSON modification plan."""
+    selector = TargetSelector(source=source, max_items=max_items)  # type: ignore[arg-type]
+    action = JsonPatchAction(file=file, json_pointer=json_pointer, value=value, reason="CLI modify command.")  # type: ignore[arg-type]
+    operation_plan = make_manual_plan(
+        "CLI modify command",
+        selector=selector,
+        operations=[
+            DataOperation(
+                operation_type=OperationType.MODIFY_INSTANCE_JSON,
+                description="CLI JSON modification.",
+                patch_actions=[action],
+            )
+        ],
+    )
+    result = execute_plan(
+        operation_plan,
+        apply=apply,
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command()
+def segment(
+    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    backend: Annotated[str, typer.Option(help="auto, yolo, or sam2.")] = "auto",
+    model: Annotated[str | None, typer.Option(help="YOLO model path/name.")] = None,
+    checkpoint: Annotated[Path | None, typer.Option(help="SAM2 checkpoint path.")] = None,
+    model_cfg: Annotated[str | None, typer.Option(help="SAM2 model config path/name.")] = None,
+    pretrained: Annotated[str | None, typer.Option(help="SAM2 Hugging Face pretrained id.")] = None,
+    max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Run segmentation on selected targets."""
+    params = {"backend": backend}
+    if model:
+        params["model"] = model
+    if checkpoint:
+        params["checkpoint"] = str(normalize_path(checkpoint))
+    if model_cfg:
+        params["model_cfg"] = model_cfg
+    if pretrained:
+        params["pretrained"] = pretrained
+    result = execute_plan(
+        make_manual_plan(
+            "CLI segmentation command",
+            selector=TargetSelector(source=source, max_items=max_items),  # type: ignore[arg-type]
+            operations=[
+                DataOperation(
+                    operation_type=OperationType.SEGMENTATION,
+                    description="CLI segmentation.",
+                    params=params,
+                )
+            ],
+        ),
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command()
+def label(
+    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    provider: Annotated[str, typer.Option(help="heuristic or openai.")] = "heuristic",
+    max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Create grape disease label proposals."""
+    result = execute_plan(
+        make_manual_plan(
+            "CLI grape disease labeling command",
+            selector=TargetSelector(source=source, max_items=max_items),  # type: ignore[arg-type]
+            operations=[
+                DataOperation(
+                    operation_type=OperationType.GRAPE_DISEASE_LABELING,
+                    description="CLI grape disease label proposals.",
+                    params={"provider": provider},
+                )
+            ],
+        ),
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command()
+def embed(
+    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
+    persist_vector_index: Annotated[bool, typer.Option(help="Try to persist vectors to LanceDB.")] = False,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Compute image embeddings."""
+    result = execute_plan(
+        make_manual_plan(
+            "CLI embedding command",
+            selector=TargetSelector(source=source, max_items=max_items),  # type: ignore[arg-type]
+            operations=[
+                DataOperation(
+                    operation_type=OperationType.EMBEDDING,
+                    description="CLI image embeddings.",
+                    params={"backend": "color_histogram", "persist_vector_index": persist_vector_index},
+                )
+            ],
+        ),
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command()
+def augment(
+    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
+    count_per_image: Annotated[int, typer.Option(help="Augmented variants per image.")] = 3,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Create augmented image derivatives."""
+    result = execute_plan(
+        make_manual_plan(
+            "CLI augmentation command",
+            selector=TargetSelector(source=source, max_items=max_items),  # type: ignore[arg-type]
+            operations=[
+                DataOperation(
+                    operation_type=OperationType.AUGMENTATION,
+                    description="CLI image augmentation.",
+                    params={"count_per_image": count_per_image},
+                )
+            ],
+        ),
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command("export-label-studio")
+def export_label_studio(
+    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+) -> None:
+    """Export selected targets as Label Studio task JSON."""
+    result = execute_plan(
+        make_manual_plan(
+            "CLI Label Studio export command",
+            selector=TargetSelector(source=source, max_items=max_items),  # type: ignore[arg-type]
+            operations=[
+                DataOperation(
+                    operation_type=OperationType.EXPORT_LABEL_STUDIO,
+                    description="CLI Label Studio export.",
+                )
+            ],
+        ),
+        workspace_root=normalize_path(workspace_root),
+        job_root=normalize_path(job_root),
+    )
+    print_json(result.model_dump())
+
+
+@app.command("mcp-server")
+def mcp_server() -> None:
+    """Expose Data Agent planning tools over MCP when mcp is installed."""
+    run_mcp_server()
+
+
+def make_manual_plan(prompt: str, *, selector: TargetSelector, operations: list[DataOperation]) -> OperationPlan:
+    from src.gophereye_runtime.utils import now_utc, stable_id
+
+    return OperationPlan(
+        plan_id=stable_id("plan", prompt, now_utc()),
+        user_prompt=prompt,
+        created_at=now_utc(),
+        planner="manual",
+        target_selector=selector,
+        operations=operations,
+    )
