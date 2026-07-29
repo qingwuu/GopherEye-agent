@@ -1,32 +1,57 @@
-## Grape Leaf Foundation
+---
+title: GopherEye Wiki Index
+page_type: index_page
+review_status: draft
+last_updated: 2026-07-29
+---
 
-- [Grape Leaf Anatomy](grape_leaf/anatomy.md)
-- [Grape Leaf Surfaces](grape_leaf/leaf_surfaces.md)
-- [Normal Grape Leaf Variation](grape_leaf/normal_variation.md)
-- [Grape Leaf Image Guidance](grape_leaf/image_guidance.md)
+# GopherEye Wiki
 
-## Diagnosis Procedures And Routines
+This wiki is organized around diagnosis decisions. Disease pages hold the
+disease-specific details; procedures hold reusable reasoning steps; treatment
+pages hold only reviewed management boundaries and links.
 
-- [Whole Grape Leaf Diagnosis Process](procedures/whole_diagnosis_process.md)
-- [Botanical Procedure Types](procedures/procedure_structures.md)
-- [Visual Observation Sequence](procedures/visual_observation_sequence.md)
-- [Symptom Localization Procedure](procedures/symptom_localization_procedure.md)
-- [Differential Diagnosis Procedure](procedures/differential_diagnosis_procedure.md)
-- [Evidence Sufficiency](workflows/evidence_sufficiency.md)
-- [Front/Back Image Request](workflows/front_back_request.md)
-- [Front/Back Leaf Process](workflows/front_back_leaf_process.md)
-- [Diagnosis Scripts](diagnosis/diagnosis_scripts.md)
-- [Grape Leaf Diagnosis Dialog Tree](dialogs/grape_leaf_diagnosis_dialog_tree.md)
+## Disease Knowledge
 
-## Expert Knowledge And Sources
+- [Powdery Mildew](disease/powdery_mildew/index.md)
+- [Downy Mildew](disease/downy_mildew/index.md)
+- [Healthy Or Normal Variation](disease/healthy/index.md)
+- [Other Or Unresolved Conditions](disease/others/index.md)
 
-- [Powdery Mildew](diseases/powdery_mildew.md)
-- [Downy Mildew](diseases/downy_mildew.md)
-- [Expert Information And Examples](expert_information/expert_information_and_examples.md)
-- [Case Example Structure](expert_information/case_example_structure.md)
-- [Disease Page Template](diseases/disease_page_template.md)
+## Treatment Boundaries
 
-## Treatment Resources
+- [Powdery Mildew Treatment](treatment/powdery_mildew.md)
+- [Downy Mildew Treatment](treatment/downy_mildew.md)
+- [Healthy Or Normal Variation Treatment](treatment/healthy_or_normal_variation.md)
+- [Other Or Unresolved Conditions Treatment](treatment/others.md)
 
-- [Treatment Resource Policy](treatment_resources/treatment_resource_policy.md)
-- [Treatment Resource Index](treatment_resources/resource_index.md)
+## Procedures
+
+- [Diagnosis SOP](procedures/diagnosis_sop.md)
+- [Image And Evidence SOP](procedures/image_and_evidence_sop.md)
+
+## Reference
+
+- [Grape Leaf Anatomy](reference/grape_leaf_anatomy.md)
+- [Terminology](reference/terminology.md)
+- [Source Policy](reference/source_policy.md)
+
+## Navigation Rules
+
+```text
+diagnosis question:
+  start with procedures/diagnosis_sop.md
+  then open the relevant disease page
+
+image quality or missing surface question:
+  start with procedures/image_and_evidence_sop.md
+  then open the disease page only if a candidate is visible
+
+treatment question:
+  open the disease page for diagnosis confidence
+  then open the matching treatment page
+  do not answer from unsupported memory
+
+uncertain or noncanonical symptoms:
+  compare against disease/healthy/index.md and disease/others/index.md
+```
