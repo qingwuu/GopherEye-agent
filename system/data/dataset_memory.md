@@ -65,20 +65,20 @@ The model should not rely only on generated text. It should read structured
 fields such as severity trend, side coverage, disease history, and evidence
 sufficiency.
 
-## Runtime Data Agent
+## GopherEye Data Agent Boundary
 
-The first runtime data layer lives outside the model call:
+The independent GopherEye Data Agent is a CLI-first data workspace, not a chat
+session archive. It imports explicit image-pair folders and writes its own
+instances, jobs, artifacts, indexes, and review queues under:
 
 ```text
-existing diagnosis/chat session
--> tools/data_agent.py capture-turn
--> machine_generated / unreviewed model_label
--> human_review.submitted.json
--> reviewed_dataset_index.jsonl
+gophereye_data_workspace/
 ```
 
-The Data Agent records insufficient-evidence cases too. These cases are useful
-for review queues and data collection planning, but they are not ground-truth
-disease labels until human review accepts or corrects them.
+The frontier chat system may discuss data collection strategy, but it should not
+drive or own this workspace. GopherEye Data Agent commands handle leaf-pair
+import, instance JSON modification, grape disease label proposals, segmentation,
+embedding, augmentation, review export, and experiment/versioning integrations.
 
-See [Data Agent Workflow](data_agent_workflow.md).
+Unreviewed model proposals are not ground-truth disease labels until human
+review accepts or corrects them.

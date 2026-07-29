@@ -32,7 +32,6 @@ CORE_WIKI_CONTEXT_BY_TASK = {
 }
 CORE_SYSTEM_CONTEXT_BY_TASK = {
     "data_management": [
-        "data/data_agent_workflow.md",
         "data/dataset_memory.md",
         "agents/frontier_agent_system.md",
         "contracts/schema_layer.md",
@@ -136,7 +135,7 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         task_type = "general_project_chat"
 
     path_by_task = {
-        "data_management": ["router", "data_agent", "chat_agent"],
+        "data_management": ["router", "chat_agent"],
         "visual_intake_or_diagnosis": ["router", "vision_agent", "retrieval_agent", "diagnosis_agent"],
         "knowledge_management": ["router", "retrieval_agent", "wiki_agent"],
         "grape_leaf_chat": ["router", "retrieval_agent", "chat_agent"],
@@ -308,7 +307,9 @@ Agent responsibilities:
 - For visual diagnosis, detailed botanical procedure must come from selected wiki pages,
   not from hidden assumptions in this prompt.
 - Diagnosis agent keeps uncertainty visible according to selected wiki procedure pages.
-- Data agent can explain how to collect, ingest, validate, store, audit, and evaluate data.
+- For data-management questions, chat_agent can explain how to collect,
+  ingest, validate, store, audit, and evaluate data. It must not run or mutate
+  the independent GopherEye Data Agent workspace.
 
 Rules:
 - Write assistant_message in English only.

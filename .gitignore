@@ -23,6 +23,11 @@ sessions/**/*.json
 Cloud_model/sessions/*.json
 catalog/
 draft_updates/*.md
+gophereye_data_workspace/
+data_agent/
+mlartifacts/
+mlruns/
+mlflow.db
 
 .DS_Store
 .vscode/

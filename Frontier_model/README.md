@@ -115,7 +115,7 @@ user message / image
 -> router
 -> vision agent if images are attached
 -> retrieval agent over wiki or system pages
--> diagnosis/chat/data agent
+-> diagnosis/chat response agent
 -> thin assistant envelope JSON response
 -> session memory update
 -> saved session output
