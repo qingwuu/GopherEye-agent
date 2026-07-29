@@ -2,7 +2,7 @@
 title: Frontier Agent System
 page_type: workflow_page
 review_status: draft
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 sources: []
 ---
 
@@ -66,13 +66,12 @@ The frontier prompt should not hard-code detailed plant diagnostic procedure.
 Instead, visual diagnosis turns should read selected wiki pages such as:
 
 ```text
-wiki/procedures/whole_diagnosis_process.md
-wiki/procedures/visual_observation_sequence.md
-wiki/procedures/symptom_localization_procedure.md
-wiki/workflows/evidence_sufficiency.md
-wiki/workflows/front_back_leaf_process.md
-wiki/diseases/powdery_mildew.md
-wiki/diseases/downy_mildew.md
+wiki/procedures/diagnosis_sop.md
+wiki/procedures/image_and_evidence_sop.md
+wiki/disease/powdery_mildew/index.md
+wiki/disease/downy_mildew/index.md
+wiki/disease/healthy/index.md
+wiki/disease/others/index.md
 ```
 
 Code may require these page paths as core context, but the botanical reasoning
@@ -149,5 +148,5 @@ not yet implemented:
 ```
 
 See [Agent Context Reading Policy](context_reading_policy.md),
-[Evidence Sufficiency](../../wiki/workflows/evidence_sufficiency.md),
-[Whole Grape Leaf Diagnosis Process](../../wiki/procedures/whole_diagnosis_process.md).
+[Image And Evidence SOP](../../wiki/procedures/image_and_evidence_sop.md),
+[Diagnosis SOP](../../wiki/procedures/diagnosis_sop.md).

@@ -28,7 +28,8 @@ from src.gophereye_runtime.utils import (
 )
 
 
-DEFAULT_DATA_ROOT = ROOT_DIR / "data_agent"
+DEFAULT_ARCHIVE_ROOT = ROOT_DIR / "data_agent"
+DEFAULT_DATA_ROOT = DEFAULT_ARCHIVE_ROOT
 DEFAULT_FRONTIER_SESSION_DIR = ROOT_DIR / "sessions" / "frontier"
 SCHEMA_DIR = ROOT_DIR / "schemas" / "data_agent"
 
@@ -100,6 +101,36 @@ def load_session_from_args(session_path: str | None, session_id: str | None, ses
     if not isinstance(session, dict):
         raise ValueError(f"Session file is not a JSON object: {path}")
     return path, session
+
+
+def iter_session_files(session_dir: Path) -> List[Path]:
+    if not session_dir.exists():
+        return []
+    return sorted(path for path in session_dir.glob("*.json") if path.is_file())
+
+
+def load_session_file(session_path: Path) -> Dict[str, Any]:
+    session = read_json(session_path)
+    if not isinstance(session, dict):
+        raise ValueError(f"Session file is not a JSON object: {session_path}")
+    return session
+
+
+def is_archiveable_turn(turn: Dict[str, Any]) -> bool:
+    task_type = ((turn.get("route") or {}).get("task_type") or "")
+    if task_type == "visual_intake_or_diagnosis":
+        return True
+    return bool(turn.get("attached_image_manifest") or turn.get("requested_image_records"))
+
+
+def archiveable_turns(session: Dict[str, Any], *, include_all_turns: bool = False) -> List[Dict[str, Any]]:
+    turns = session.get("turns") or []
+    if not isinstance(turns, list):
+        return []
+    out = [turn for turn in turns if isinstance(turn, dict)]
+    if include_all_turns:
+        return out
+    return [turn for turn in out if is_archiveable_turn(turn)]
 
 
 def find_turn(session: Dict[str, Any], turn_id: int | None) -> Dict[str, Any]:
@@ -522,6 +553,29 @@ def build_manifest(
     }
 
 
+def preserve_existing_review_state(instance_dir: Path, manifest: Dict[str, Any]) -> Dict[str, Any]:
+    existing_manifest_path = instance_dir / "manifest.json"
+    if existing_manifest_path.exists():
+        existing_manifest = read_json(existing_manifest_path)
+        if isinstance(existing_manifest, dict) and existing_manifest.get("review_status") == "reviewed":
+            manifest["review_status"] = "reviewed"
+            manifest["is_ground_truth"] = bool(existing_manifest.get("is_ground_truth"))
+
+    submitted_path = instance_dir / "human_review.submitted.json"
+    if not submitted_path.exists():
+        return manifest
+
+    submitted = read_json(submitted_path)
+    if not isinstance(submitted, dict):
+        return manifest
+
+    if submitted.get("review_status") == "reviewed":
+        manifest["review_status"] = "reviewed"
+        manifest["is_ground_truth"] = submitted.get("decision") in INGESTIBLE_REVIEW_DECISIONS
+        manifest["files"]["human_review_submitted"] = "human_review.submitted.json"
+    return manifest
+
+
 def append_audit_event(instance_dir: Path, event: Dict[str, Any]) -> None:
     path = instance_dir / "audit_events.jsonl"
     rows = read_jsonl(path)
@@ -539,6 +593,7 @@ def capture_turn(
     session: Dict[str, Any],
     turn: Dict[str, Any],
     copy_images: bool,
+    rebuild_index: bool = True,
 ) -> Dict[str, Any]:
     ensure_layout(data_root)
     image_items = unique_image_items(session, turn)
@@ -575,6 +630,7 @@ def capture_turn(
         model_label=model_label,
         upload_record=upload_record,
     )
+    manifest = preserve_existing_review_state(instance_dir, manifest)
 
     write_json(instance_dir / "upload_record.json", upload_record)
     write_json(instance_dir / "model_label.json", model_label)
@@ -596,7 +652,7 @@ def capture_turn(
             "copy_images": copy_images,
         },
     )
-    index_summary = rebuild_indexes(data_root)
+    index_summary = rebuild_indexes(data_root) if rebuild_index else {"deferred": True}
     return {
         "instance_id": instance_id,
         "instance_dir": root_relative(instance_dir),
@@ -606,6 +662,88 @@ def capture_turn(
         "image_ids": model_label["image_ids"],
         "human_review_template": root_relative(instance_dir / "human_review.template.json"),
         "indexes": index_summary,
+    }
+
+
+def archive_sessions(
+    *,
+    data_root: Path,
+    session_dir: Path,
+    copy_images: bool = True,
+    include_all_turns: bool = False,
+) -> Dict[str, Any]:
+    ensure_layout(data_root)
+    archived: List[Dict[str, Any]] = []
+    skipped_sessions: List[Dict[str, Any]] = []
+    failed_turns: List[Dict[str, Any]] = []
+
+    for session_path in iter_session_files(session_dir):
+        try:
+            session = load_session_file(session_path)
+        except Exception as exc:
+            skipped_sessions.append({"session_path": root_relative(session_path), "error": str(exc)})
+            continue
+
+        turns = archiveable_turns(session, include_all_turns=include_all_turns)
+        if not turns:
+            skipped_sessions.append(
+                {
+                    "session_path": root_relative(session_path),
+                    "session_id": session.get("session_id"),
+                    "reason": "no archiveable turns",
+                }
+            )
+            continue
+
+        for turn in turns:
+            try:
+                result = capture_turn(
+                    data_root=data_root,
+                    session_path=session_path,
+                    session=session,
+                    turn=turn,
+                    copy_images=copy_images,
+                    rebuild_index=False,
+                )
+            except Exception as exc:
+                failed_turns.append(
+                    {
+                        "session_path": root_relative(session_path),
+                        "session_id": session.get("session_id"),
+                        "user_turn_id": turn.get("user_turn_id"),
+                        "assistant_turn_id": turn.get("assistant_turn_id"),
+                        "error": str(exc),
+                    }
+                )
+                continue
+            archived.append(
+                {
+                    "session_path": root_relative(session_path),
+                    "session_id": session.get("session_id"),
+                    "user_turn_id": turn.get("user_turn_id"),
+                    "assistant_turn_id": turn.get("assistant_turn_id"),
+                    "instance_id": result.get("instance_id"),
+                    "instance_dir": result.get("instance_dir"),
+                    "review_status": result.get("review_status"),
+                    "evidence_status": result.get("evidence_status"),
+                    "image_ids": result.get("image_ids") or [],
+                }
+            )
+
+    indexes = rebuild_indexes(data_root)
+    reviewed_index = build_reviewed_index(data_root)
+    return {
+        "archive_root": root_relative(data_root),
+        "session_dir": root_relative(session_dir),
+        "copy_images": copy_images,
+        "include_all_turns": include_all_turns,
+        "sessions_seen": len(iter_session_files(session_dir)),
+        "turns_archived": len(archived),
+        "archived": archived,
+        "skipped_sessions": skipped_sessions,
+        "failed_turns": failed_turns,
+        "indexes": indexes,
+        "reviewed_index": reviewed_index,
     }
 
 
@@ -899,18 +1037,40 @@ def validate_instance(data_root: Path, instance_id: str) -> Dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Deterministic Data Agent sidecar for GopherEye sessions.")
-    parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Runtime Data Agent root directory.")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(description="Deterministic Session Archive for GopherEye session outputs.")
+    parser.add_argument(
+        "--archive-root",
+        "--data-root",
+        dest="archive_root",
+        default=str(DEFAULT_ARCHIVE_ROOT),
+        help="Runtime archive root directory. Defaults to the existing data_agent/ store.",
+    )
+    sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("init", help="Create the Data Agent runtime directory layout.")
+    archive_all_parser = sub.add_parser(
+        "archive-all",
+        help="Archive every capture-worthy turn from every Frontier session, then rebuild indexes.",
+    )
+    archive_all_parser.add_argument("--session-dir", default=str(DEFAULT_FRONTIER_SESSION_DIR))
+    archive_all_parser.add_argument(
+        "--no-copy-images",
+        action="store_true",
+        help="Do not copy local image files into the archive image store.",
+    )
+    archive_all_parser.add_argument(
+        "--include-all-turns",
+        action="store_true",
+        help="Archive non-visual turns too. By default only visual/image turns are archived.",
+    )
 
-    capture = sub.add_parser("capture-turn", help="Capture one existing session turn as an unreviewed data instance.")
+    sub.add_parser("init", help="Create the session archive runtime directory layout.")
+
+    capture = sub.add_parser("capture-turn", help="Capture one existing session turn as an unreviewed archive instance.")
     capture.add_argument("--session-path", default=None)
     capture.add_argument("--session-id", default=None)
     capture.add_argument("--session-dir", default=str(DEFAULT_FRONTIER_SESSION_DIR))
     capture.add_argument("--turn-id", type=int, default=None, help="User or assistant turn id. Defaults to latest visual turn.")
-    capture.add_argument("--copy-images", action="store_true", help="Copy local image files into data_agent/uploads/images.")
+    capture.add_argument("--copy-images", action="store_true", help="Copy local image files into the archive image store.")
 
     import_parser = sub.add_parser("import-review", help="Import a human-edited review JSON into an instance.")
     import_parser.add_argument("--instance-id", default=None)
@@ -919,7 +1079,7 @@ def main() -> None:
     show_parser = sub.add_parser("show-instance", help="Print instance manifest, label, upload, and review data.")
     show_parser.add_argument("instance_id")
 
-    validate_parser = sub.add_parser("validate-instance", help="Validate an instance against Data Agent schemas.")
+    validate_parser = sub.add_parser("validate-instance", help="Validate an instance against archive schemas.")
     validate_parser.add_argument("instance_id")
 
     sub.add_parser("list-pending", help="List model labels waiting for human review.")
@@ -927,14 +1087,22 @@ def main() -> None:
     sub.add_parser("build-reviewed-index", help="Build reviewed_dataset_index.jsonl from imported human reviews.")
 
     args = parser.parse_args()
-    data_root = normalize_path(args.data_root)
+    command = args.command or "archive-all"
+    data_root = normalize_path(args.archive_root)
 
     try:
-        if args.command == "init":
+        if command == "archive-all":
+            result = archive_sessions(
+                data_root=data_root,
+                session_dir=normalize_path(getattr(args, "session_dir", str(DEFAULT_FRONTIER_SESSION_DIR))),
+                copy_images=not getattr(args, "no_copy_images", False),
+                include_all_turns=getattr(args, "include_all_turns", False),
+            )
+        elif command == "init":
             paths = ensure_layout(data_root)
             result = {"data_root": root_relative(data_root), "created": {key: root_relative(path) for key, path in paths.items()}}
-        elif args.command == "capture-turn":
-            session_path, session = load_session_from_args(args.session_path, args.session_id, Path(args.session_dir))
+        elif command == "capture-turn":
+            session_path, session = load_session_from_args(args.session_path, args.session_id, normalize_path(args.session_dir))
             turn = find_turn(session, args.turn_id)
             result = capture_turn(
                 data_root=data_root,
@@ -943,20 +1111,20 @@ def main() -> None:
                 turn=turn,
                 copy_images=args.copy_images,
             )
-        elif args.command == "import-review":
+        elif command == "import-review":
             result = import_review(data_root, args.instance_id, args.review_file)
-        elif args.command == "show-instance":
+        elif command == "show-instance":
             result = show_instance(data_root, args.instance_id)
-        elif args.command == "validate-instance":
+        elif command == "validate-instance":
             result = validate_instance(data_root, args.instance_id)
-        elif args.command == "list-pending":
+        elif command == "list-pending":
             result = list_pending(data_root)
-        elif args.command == "rebuild-indexes":
+        elif command == "rebuild-indexes":
             result = rebuild_indexes(data_root)
-        elif args.command == "build-reviewed-index":
+        elif command == "build-reviewed-index":
             result = build_reviewed_index(data_root)
         else:
-            raise ValueError(f"Unknown command: {args.command}")
+            raise ValueError(f"Unknown command: {command}")
     except Exception as exc:
         safe_print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(1) from exc

@@ -140,13 +140,12 @@ For visual diagnosis, the pipeline prefers core botanical procedure pages from
 `wiki/`, such as:
 
 ```text
-wiki/procedures/whole_diagnosis_process.md
-wiki/procedures/visual_observation_sequence.md
-wiki/procedures/symptom_localization_procedure.md
-wiki/workflows/evidence_sufficiency.md
-wiki/workflows/front_back_leaf_process.md
-wiki/diseases/powdery_mildew.md
-wiki/diseases/downy_mildew.md
+wiki/procedures/diagnosis_sop.md
+wiki/procedures/image_and_evidence_sop.md
+wiki/disease/powdery_mildew/index.md
+wiki/disease/downy_mildew/index.md
+wiki/disease/healthy/index.md
+wiki/disease/others/index.md
 ```
 
 The detailed plant diagnostic procedure should stay in `wiki/`. Frontier code
