@@ -38,6 +38,7 @@ def default_plan(prompt: str, *, planner: str = "rule") -> OperationPlan:
 def rule_based_plan(prompt: str) -> OperationPlan:
     plan = default_plan(prompt, planner="rule")
     text = prompt.lower()
+    operation_text = text.replace("label studio", "ls_platform").replace("labelstudio", "ls_platform")
 
     selector = TargetSelector(source="dataset", max_items=50)
     max_match = re.search(r"(?:first|limit|max)\s+(\d+)", text)
@@ -63,11 +64,9 @@ def rule_based_plan(prompt: str) -> OperationPlan:
             )
         )
 
-    if any(token in text for token in ["segment", "segmentation", "mask", "sam", "yolo"]):
-        backend = "sam2" if "sam" in text else "yolo" if "yolo" in text else "auto"
-        params = {"backend": backend, "target": "generic_leaf_or_symptom"}
-        if backend == "yolo":
-            params["model"] = "mode/yolo_grape.pt"
+    if any(token in operation_text for token in ["segment", "segmentation", "mask", "yolo"]):
+        params = {"backend": "yolo", "target": "generic_leaf_or_symptom"}
+        params["model"] = "official" if any(token in operation_text for token in ["official", "default"]) else "local"
         plan.operations.append(
             DataOperation(
                 operation_type=OperationType.SEGMENTATION,
@@ -76,8 +75,13 @@ def rule_based_plan(prompt: str) -> OperationPlan:
             )
         )
 
-    if any(token in text for token in ["label", "labeling", "disease", "powdery", "downy"]):
-        provider = "anthropic" if ("claude" in text or "anthropic" in text) else "openai" if "openai" in text else "openai"
+    if any(token in operation_text for token in ["label", "labeling", "diagnose", "diagnosis", "diagnostic", "disease", "powdery", "downy"]):
+        if "heuristic" in operation_text or "local rule" in operation_text:
+            provider = "heuristic"
+        elif "claude" in operation_text or "anthropic" in operation_text:
+            provider = "anthropic"
+        else:
+            provider = "openai"
         plan.operations.append(
             DataOperation(
                 operation_type=OperationType.GRAPE_DISEASE_LABELING,
@@ -85,6 +89,7 @@ def rule_based_plan(prompt: str) -> OperationPlan:
                 params={
                     "allowed_labels": ["powdery_mildew", "downy_mildew", "healthy", "unknown", "not_leaf"],
                     "provider": provider,
+                    "write_artifacts": False,
                     "write_back": False,
                 },
             )
@@ -108,12 +113,13 @@ def rule_based_plan(prompt: str) -> OperationPlan:
             )
         )
 
-    if "label studio" in text:
+    wants_push = any(token in text for token in ["push", "upload", "send to", "open in", "view in", "export", "推送", "上传", "查看", "打开"])
+    if "label studio" in text or "labelstudio" in text:
         plan.operations.append(
             DataOperation(
                 operation_type=OperationType.EXPORT_LABEL_STUDIO,
-                description="Export selected targets as Label Studio tasks.",
-                params={"output_name": "label_studio_tasks.json"},
+                description="Export or upload selected targets as Label Studio tasks.",
+                params={"output_name": "label_studio_tasks.json", "embed_images": True, "upload": wants_push},
             )
         )
 
@@ -121,8 +127,17 @@ def rule_based_plan(prompt: str) -> OperationPlan:
         plan.operations.append(
             DataOperation(
                 operation_type=OperationType.OPEN_FIFTYONE,
-                description="Create or open a FiftyOne dataset view.",
-                params={"dataset_name": "gophereye_data_agent"},
+                description="Create a persistent FiftyOne dataset view.",
+                params={"dataset_name": "gophereye_data_agent", "overwrite": True},
+            )
+        )
+
+    if "roboflow" in text or "robotflow" in text:
+        plan.operations.append(
+            DataOperation(
+                operation_type=OperationType.PUSH_ROBOFLOW,
+                description="Push selected images to a configured Roboflow project.",
+                params={},
             )
         )
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from src.gophereye_runtime.utils import write_json
 
-from .integrations import export_label_studio, log_mlflow, open_fiftyone, sync_hf_hub, version_dvc, version_lakefs
+from .integrations import export_label_studio, log_mlflow, open_fiftyone, push_roboflow, sync_hf_hub, version_dvc, version_lakefs
 from .labeling import run_labeling
 from .manifest_store import read_manifest, write_manifest
 from .paths import DEFAULT_JOB_ROOT, DEFAULT_WORKSPACE_ROOT, root_relative
@@ -51,6 +51,8 @@ def execute_plan(
                 result = export_label_studio(op_targets, job_dir=job_dir, params=operation.params, workspace_root=workspace_root)
             elif operation.operation_type == OperationType.OPEN_FIFTYONE:
                 result = open_fiftyone(op_targets, job_dir=job_dir, params=operation.params, workspace_root=workspace_root)
+            elif operation.operation_type == OperationType.PUSH_ROBOFLOW:
+                result = push_roboflow(op_targets, job_dir=job_dir, params=operation.params, workspace_root=workspace_root)
             elif operation.operation_type == OperationType.SYNC_HF_HUB:
                 result = sync_hf_hub(job_dir, operation.params)
             elif operation.operation_type == OperationType.LOG_MLFLOW:
@@ -80,10 +82,16 @@ def execute_plan(
     blocking_statuses = {"failed", "not_available"}
     if any(result.status in blocking_statuses for result in operation_results):
         status = "partial" if any(result.status in {"ok", "skipped"} for result in operation_results) else "failed"
+    dry_run_operations = {
+        OperationType.MODIFY_MANIFEST,
+        OperationType.MODIFY_INSTANCE_JSON,
+        OperationType.VERSION_DVC,
+    }
+    has_dry_run_operation = any(operation.operation_type in dry_run_operations for operation in plan.operations)
     job_result = JobResult(
         job_id=job_dir.name,
         job_dir=root_relative(job_dir) or str(job_dir),
-        dry_run=not apply,
+        dry_run=has_dry_run_operation and not apply,
         plan=plan,
         targets=targets,
         operation_results=operation_results,
@@ -132,7 +140,8 @@ def update_manifest_from_result(workspace_root: Path, result: OperationResult) -
                 continue
             row["label"] = proposal.get("disease") or "unknown"
             row["label_confidence"] = proposal.get("confidence") or "unknown"
-            row["label_source"] = proposal.get("source", {}).get("method") or "data_agent_labeling"
+            source = proposal.get("source", {}) if isinstance(proposal.get("source"), dict) else {}
+            row["label_source"] = source.get("provider") or source.get("method") or "data_agent_labeling"
             for artifact in result.artifacts:
                 if instance_id in artifact:
                     row["latest_label_artifact"] = artifact

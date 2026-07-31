@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WORKSPACE_ROOT = REPO_ROOT / "gophereye_data_workspace"
 DEFAULT_JOB_ROOT = DEFAULT_WORKSPACE_ROOT / "runs"
 DEFAULT_AGENT_ARTIFACT_ROOT = DEFAULT_WORKSPACE_ROOT / "agent_artifacts"
-DEFAULT_YOLO_SEG_MODEL = REPO_ROOT / "mode" / "yolo_grape.pt"
+DEFAULT_YOLO_SEG_MODEL = REPO_ROOT / "model" / "yolo_grape.pt"
 
 
 def normalize_path(path_text: str | Path) -> Path:

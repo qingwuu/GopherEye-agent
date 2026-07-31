@@ -15,6 +15,7 @@ class OperationType(str, Enum):
     AUGMENTATION = "augmentation"
     EXPORT_LABEL_STUDIO = "export_label_studio"
     OPEN_FIFTYONE = "open_fiftyone"
+    PUSH_ROBOFLOW = "push_roboflow"
     SYNC_HF_HUB = "sync_hf_hub"
     LOG_MLFLOW = "log_mlflow"
     VERSION_DVC = "version_dvc"

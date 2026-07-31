@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "notes": "Manually maintained priority web sources. These sources are searched first, but they do not limit the later broad web search pass.",
+  "priority_sources": [
+    {
+      "name": "UC IPM Grape",
+      "url": "https://ipm.ucanr.edu/agriculture/grape/",
+      "domains": ["ipm.ucanr.edu"],
+      "topics": ["grape disease diagnosis", "integrated pest management", "treatment boundaries"]
+    },
+    {
+      "name": "Cornell Grape Disease Resources",
+      "url": "https://cals.cornell.edu/integrated-pest-management",
+      "domains": ["cals.cornell.edu"],
+      "topics": ["grape disease fact sheets", "diagnostic evidence", "extension guidance"]
+    },
+    {
+      "name": "Agriculture and Agri-Food Canada Grape Disease Guide",
+      "url": "https://agriculture.canada.ca/",
+      "domains": ["agriculture.canada.ca"],
+      "topics": ["major grape diseases", "symptom identification"]
+    }
+  ]
+}

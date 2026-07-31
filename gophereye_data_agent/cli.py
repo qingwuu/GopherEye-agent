@@ -14,6 +14,7 @@ from src.gophereye_runtime.utils import read_json, safe_print, write_json
 from . import __version__
 from .agents_runtime import agents_sdk_status
 from .executor import execute_plan, summarize_job_result
+from .language_prompt import build_language_prompt_plan
 from .mcp_server import mcp_status, run_mcp_server
 from .sample_import import import_image_samples
 from .paths import normalize_path, root_relative
@@ -68,10 +69,10 @@ def doctor() -> None:
         ("Typer", "typer", None),
         ("Pydantic", "pydantic", None),
         ("Ultralytics YOLO", "ultralytics", None),
-        ("SAM2", "sam2", None),
         ("Albumentations", "albumentations", None),
         ("FiftyOne", "fiftyone", None),
         ("Label Studio SDK", "label_studio_sdk", None),
+        ("Roboflow", "roboflow", None),
         ("Hugging Face Hub", "huggingface_hub", None),
         ("MLflow", "mlflow", None),
         ("DVC", "dvc", None),
@@ -153,8 +154,8 @@ def auto(
     embed: Annotated[bool, typer.Option(help="Compute image embeddings.")] = True,
     augment: Annotated[bool, typer.Option(help="Create image augmentations.")] = True,
     export_ls: Annotated[bool, typer.Option("--export-label-studio/--no-export-label-studio", help="Export Label Studio task JSON.")] = True,
-    segment_backend: Annotated[str, typer.Option(help="none, yolo, or sam2.")] = "none",
-    yolo_model: Annotated[Path, typer.Option(help="Local YOLO segmentation model path.")] = Path("mode/yolo_grape.pt"),
+    segment_backend: Annotated[str, typer.Option(help="none or yolo.")] = "none",
+    yolo_model: Annotated[str, typer.Option(help="YOLO model selector: local, official, a local .pt path, or an Ultralytics model name.")] = "local",
     count_per_image: Annotated[int, typer.Option(help="Augmented variants per image.")] = 1,
 ) -> None:
     """Import image samples and run the lightweight Data Agent automation in one command."""
@@ -217,6 +218,38 @@ def auto(
     summary["import"] = import_result
     summary["manifest_csv"] = import_result.get("manifest_csv")
     summary["manifest_jsonl"] = import_result.get("manifest_jsonl")
+    print_json(summary)
+
+
+@app.command()
+def ask(
+    prompt: Annotated[str, typer.Argument(help="Natural-language request, including image path, operations, and optional platform push.")],
+    planner: Annotated[str, typer.Option(help="rule, openai, or anthropic.")] = "rule",
+    model: Annotated[str | None, typer.Option(help="Planner model name.")] = None,
+    push_to: Annotated[str, typer.Option(help="auto, none, fiftyone, label-studio, or roboflow.")] = "auto",
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
+    apply: Annotated[bool, typer.Option(help="Apply manifest modification writes when prompt includes modify actions.")] = False,
+) -> None:
+    """Run a full language-prompted Data Agent workflow."""
+    workspace = normalize_path(workspace_root)
+    plan, import_results = build_language_prompt_plan(
+        prompt,
+        planner=planner,
+        model=model,
+        workspace_root=workspace,
+        push_to=push_to,
+    )
+    result = execute_plan(
+        plan,
+        apply=apply,
+        workspace_root=workspace,
+        job_root=normalize_path(job_root),
+    )
+    summary = summarize_job_result(result)
+    summary["prompt"] = prompt
+    summary["imports"] = import_results
+    summary["plan"] = plan.model_dump()
     print_json(summary)
 
 
@@ -310,11 +343,8 @@ def modify(
 @app.command()
 def segment(
     source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
-    backend: Annotated[str, typer.Option(help="auto, yolo, or sam2.")] = "auto",
-    model: Annotated[str | None, typer.Option(help="YOLO model path/name. Defaults to mode/yolo_grape.pt.")] = None,
-    checkpoint: Annotated[Path | None, typer.Option(help="SAM2 checkpoint path.")] = None,
-    model_cfg: Annotated[str | None, typer.Option(help="SAM2 model config path/name.")] = None,
-    pretrained: Annotated[str | None, typer.Option(help="SAM2 Hugging Face pretrained id.")] = None,
+    backend: Annotated[str, typer.Option(help="auto or yolo.")] = "auto",
+    model: Annotated[str | None, typer.Option(help="YOLO model selector: local, official, a local .pt path, or an Ultralytics model name. Defaults to local.")] = None,
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
     job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
@@ -323,12 +353,6 @@ def segment(
     params = {"backend": backend}
     if model:
         params["model"] = model
-    if checkpoint:
-        params["checkpoint"] = str(normalize_path(checkpoint))
-    if model_cfg:
-        params["model_cfg"] = model_cfg
-    if pretrained:
-        params["pretrained"] = pretrained
     result = execute_plan(
         make_manual_plan(
             "CLI segmentation command",

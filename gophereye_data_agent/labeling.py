@@ -30,9 +30,56 @@ class GrapeDiseaseLabelProposal(BaseModel):
     disease: str
     confidence: str = "unknown"
     evidence: list[str] = Field(default_factory=list)
-    source: dict[str, Any] = Field(default_factory=dict)
+    source: dict[str, str] = Field(default_factory=dict)
     review_status: str = "unreviewed"
     is_ground_truth: bool = False
+
+
+def normalize_string_list(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if item is not None and str(item).strip()]
+    return [str(value)]
+
+
+def normalize_string_map(value: Any) -> dict[str, str]:
+    if value is None or value == "":
+        return {}
+    if isinstance(value, dict):
+        return {str(key): str(item) for key, item in value.items() if item is not None}
+    return {"method": str(value)}
+
+
+def normalize_disease_label(value: Any, allowed_labels: list[str]) -> str:
+    disease = str(value or "unknown").strip().lower().replace(" ", "_").replace("-", "_")
+    return disease if disease in allowed_labels else "unknown"
+
+
+def normalize_label_payload(
+    parsed: dict[str, Any],
+    target: InstanceTarget,
+    allowed_labels: list[str],
+) -> dict[str, Any]:
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM labeler did not return a JSON object.")
+
+    disease = normalize_disease_label(parsed.get("disease") or parsed.get("label"), allowed_labels)
+    return {
+        "record_type": "grape_disease_label_proposal",
+        "schema_version": "gophereye.data_agent.grape_disease_label_proposal.v1",
+        "proposal_id": str(parsed.get("proposal_id") or stable_id("gdl", target.instance_id, disease, now_utc())),
+        "instance_id": target.instance_id,
+        "created_at": str(parsed.get("created_at") or now_utc()),
+        "disease": disease,
+        "confidence": str(parsed.get("confidence") or "unknown"),
+        "evidence": normalize_string_list(parsed.get("evidence") or parsed.get("reasoning") or parsed.get("notes"))[:8],
+        "source": normalize_string_map(parsed.get("source")),
+        "review_status": "unreviewed",
+        "is_ground_truth": False,
+    }
 
 
 LABEL_SYSTEM_PROMPT = """You are the GopherEye Data Agent grape disease labeler.
@@ -151,10 +198,18 @@ def openai_label(
 ) -> GrapeDiseaseLabelProposal:
     from openai import OpenAI
 
-    schema = GrapeDiseaseLabelProposal.model_json_schema()
     client = OpenAI(api_key=require_ascii_api_key("OPENAI_API_KEY"))
     content: list[dict[str, Any]] = [
-        {"type": "input_text", "text": json.dumps(label_prompt_payload(target, allowed_labels, image_paths), ensure_ascii=False)}
+        {
+            "type": "input_text",
+            "text": (
+                json.dumps(label_prompt_payload(target, allowed_labels, image_paths), ensure_ascii=False)
+                + "\n\nReturn only a JSON object with these keys: "
+                "proposal_id, instance_id, created_at, disease, confidence, evidence, source, "
+                "review_status, is_ground_truth. "
+                "Use source as a simple string map, for example {\"method\":\"vision_llm\"}."
+            ),
+        }
     ]
     for image_path in image_paths:
         content.append({"type": "input_image", "image_url": path_to_data_url(image_path)})
@@ -167,18 +222,10 @@ def openai_label(
             },
             {"role": "user", "content": content},
         ],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "grape_disease_label_proposal",
-                "schema": schema,
-                "strict": True,
-            }
-        },
     )
     raw = getattr(response, "output_text", "") or ""
     parsed = parse_json_object(raw) or json.loads(raw)
-    proposal = GrapeDiseaseLabelProposal.model_validate(parsed)
+    proposal = GrapeDiseaseLabelProposal.model_validate(normalize_label_payload(parsed, target, allowed_labels))
     return finalize_proposal(proposal, target, allowed_labels, provider="openai")
 
 
@@ -220,7 +267,9 @@ def anthropic_label(
     )
     for block in message.content:
         if getattr(block, "type", None) == "tool_use":
-            proposal = GrapeDiseaseLabelProposal.model_validate(getattr(block, "input"))
+            proposal = GrapeDiseaseLabelProposal.model_validate(
+                normalize_label_payload(getattr(block, "input"), target, allowed_labels)
+            )
             return finalize_proposal(proposal, target, allowed_labels, provider="anthropic")
     raise RuntimeError("Anthropic labeler did not return a tool call.")
 
@@ -235,8 +284,10 @@ def run_labeling(
     allowed_labels = params.get("allowed_labels") or DEFAULT_GRAPE_LABELS
     provider = params.get("provider") or "heuristic"
     model = params.get("model") or ("claude-sonnet-4-5" if provider == "anthropic" else "gpt-5-mini")
+    write_artifacts = bool(params.get("write_artifacts", True))
     out_dir = job_dir / "artifacts" / "labels"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if write_artifacts:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     artifacts: list[str] = []
     errors: list[dict[str, Any]] = []
@@ -250,9 +301,10 @@ def run_labeling(
                 proposal = anthropic_label(target, allowed_labels, model=model, image_paths=image_paths)
             else:
                 proposal = heuristic_label(target, allowed_labels)
-            path = out_dir / f"{target.instance_id}.grape_label_proposal.json"
-            write_json(path, proposal.model_dump())
-            artifacts.append(artifact_ref(path))
+            if write_artifacts:
+                path = out_dir / f"{target.instance_id}.grape_label_proposal.json"
+                write_json(path, proposal.model_dump())
+                artifacts.append(artifact_ref(path))
             proposals.append(proposal.model_dump())
         except Exception as exc:
             errors.append({"instance_id": target.instance_id, "error": str(exc)})
@@ -263,5 +315,5 @@ def run_labeling(
         message=f"Created {len(proposals)} label proposals; {len(errors)} errors.",
         targets_seen=len(targets),
         artifacts=artifacts,
-        details={"proposals": proposals, "errors": errors},
+        details={"proposals": proposals, "errors": errors, "write_artifacts": write_artifacts},
     )

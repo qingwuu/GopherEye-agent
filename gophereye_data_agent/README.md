@@ -29,6 +29,28 @@ python -m gophereye_data_agent import-samples images \
   --workspace-root gophereye_data_workspace/simple_test
 ```
 
+Language-prompted workflow:
+
+```bash
+python -m gophereye_data_agent ask \
+  "use images/1/1.jpeg, segment with official yolo, then push to fiftyone" \
+  --workspace-root gophereye_data_workspace/ask_test \
+  --job-root gophereye_data_workspace/ask_test/runs
+```
+
+Language-prompted diagnosis:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+python -m gophereye_data_agent ask \
+  "diagnosis this leaf images/1/1.jpeg with chatgpt" \
+  --workspace-root gophereye_data_workspace/ask_diagnosis_test \
+  --job-root gophereye_data_workspace/ask_diagnosis_test/runs
+```
+
+Use Claude by saying `with claude` and setting `ANTHROPIC_API_KEY`.
+
 OpenAI labeler:
 
 ```bash
@@ -96,16 +118,18 @@ python -m gophereye_data_agent label --provider anthropic
 python -m gophereye_data_agent embed
 python -m gophereye_data_agent augment --count-per-image 1
 python -m gophereye_data_agent export-label-studio
-python -m gophereye_data_agent segment --backend yolo --model mode/yolo_grape.pt --max-items 1
+python -m gophereye_data_agent segment --backend yolo --model local --max-items 1
+python -m gophereye_data_agent segment --backend yolo --model official --max-items 1
 python -m gophereye_data_agent modify /batch_id test_batch --apply
 ```
 
-YOLO segmentation is local-only by default. Put your trained segmentation weights at:
+YOLO segmentation supports two common model selectors:
 
 ```text
-mode/yolo_grape.pt
+local     -> model/yolo_grape.pt
+official  -> yolo11n-seg.pt
 ```
 
-or pass another local path with `--model`.
+You can also pass another local `.pt` path or Ultralytics model name with `--model`.
 
 Ground-truth labels still require human review. Model labels are proposals only.

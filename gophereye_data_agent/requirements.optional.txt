@@ -11,8 +11,6 @@ mcp
 
 # Vision workers
 ultralytics
-# SAM2 official install is environment-specific, especially on Windows.
-# Install from https://github.com/facebookresearch/sam2 and make module `sam2` importable.
 albumentations
 numpy
 pillow
@@ -20,6 +18,7 @@ pillow
 # Dataset curation, annotation, publishing, and tracking
 fiftyone
 label-studio-sdk
+roboflow
 huggingface-hub
 mlflow
 dvc
