@@ -28,6 +28,9 @@ data_agent/
 mlartifacts/
 mlruns/
 mlflow.db
+mode/*.pt
+models/*.pt
+yolo*.pt
 
 .DS_Store
 .vscode/
