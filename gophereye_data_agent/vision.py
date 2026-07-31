@@ -11,7 +11,7 @@ from PIL import Image, ImageEnhance
 
 from src.gophereye_runtime.utils import stable_id, write_json
 
-from .paths import DEFAULT_WORKSPACE_ROOT
+from .paths import DEFAULT_WORKSPACE_ROOT, DEFAULT_YOLO_SEG_MODEL, normalize_path, root_relative
 from .schemas import InstanceTarget, OperationResult
 from .storage import artifact_ref
 from .targets import local_image_paths
@@ -50,6 +50,22 @@ def run_yolo_segmentation(
             targets_seen=len(targets),
         )
 
+    model_name = str(params.get("model") or os.getenv("GOPHEREYE_YOLO_MODEL") or DEFAULT_YOLO_SEG_MODEL)
+    model_path = normalize_path(model_name)
+    model_ref = root_relative(model_path) or str(model_path)
+    if not model_path.exists():
+        return OperationResult(
+            operation_type="segmentation",
+            status="not_available",
+            message=(
+                "Local YOLO segmentation model not found. "
+                f"Expected {model_ref}. "
+                "Train your YOLO seg model and place it there, or pass --model <path>."
+            ),
+            targets_seen=len(targets),
+            details={"expected_model": model_ref},
+        )
+
     try:
         from ultralytics import YOLO
     except Exception as exc:
@@ -59,8 +75,6 @@ def run_yolo_segmentation(
             message=f"ultralytics is not installed: {exc}",
             targets_seen=len(targets),
         )
-
-    model_name = params.get("model") or os.getenv("GOPHEREYE_YOLO_MODEL") or "yolo11n-seg.pt"
     out_dir = job_dir / "artifacts" / "segmentation"
     mask_dir = out_dir / "masks"
     overlay_dir = out_dir / "overlays"
@@ -71,12 +85,12 @@ def run_yolo_segmentation(
     errors: list[dict[str, Any]] = []
 
     try:
-        model = YOLO(model_name)
+        model = YOLO(str(model_path))
     except Exception as exc:
         return OperationResult(
             operation_type="segmentation",
             status="not_available",
-            message=f"Could not load YOLO model {model_name!r}: {exc}",
+            message=f"Could not load YOLO model {model_ref!r}: {exc}",
             targets_seen=len(targets),
         )
 
@@ -100,7 +114,7 @@ def run_yolo_segmentation(
                             "instance_id": target.instance_id,
                             "image_path": str(image_path),
                             "backend": "yolo",
-                            "model": model_name,
+                            "model": model_ref,
                             "masks": [],
                             "overlay_path": artifact_ref(overlay_path) if overlay_path else None,
                         }
@@ -131,7 +145,7 @@ def run_yolo_segmentation(
                         "instance_id": target.instance_id,
                         "image_path": str(image_path),
                         "backend": "yolo",
-                        "model": model_name,
+                        "model": model_ref,
                         "masks": mask_records,
                         "overlay_path": artifact_ref(overlay_path) if overlay_path else None,
                     }
@@ -146,7 +160,7 @@ def run_yolo_segmentation(
             "record_type": "segmentation_manifest",
             "schema_version": "gophereye.data_agent.segmentation_manifest.v1",
             "backend": "yolo",
-            "model": model_name,
+            "model": model_ref,
             "records": records,
             "errors": errors,
         },

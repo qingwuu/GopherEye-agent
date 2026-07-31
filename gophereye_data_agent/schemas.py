@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class OperationType(str, Enum):
+    MODIFY_MANIFEST = "modify_manifest"
     MODIFY_INSTANCE_JSON = "modify_instance_json"
     SEGMENTATION = "segmentation"
     GRAPE_DISEASE_LABELING = "grape_disease_labeling"
@@ -24,12 +25,13 @@ class TargetSelector(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: Literal[
+        "dataset",
         "workspace_instances",
         "pending_reviews",
         "completed_reviews",
         "reviewed_dataset",
         "explicit_paths",
-    ] = "pending_reviews"
+    ] = "dataset"
     instance_ids: list[str] = Field(default_factory=list)
     image_ids: list[str] = Field(default_factory=list)
     paths: list[str] = Field(default_factory=list)
@@ -43,7 +45,7 @@ class TargetSelector(BaseModel):
 class WritePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    modify_existing_instance_json: bool = True
+    modify_dataset_manifest: bool = True
     require_apply_confirmation: bool = True
     ground_truth_allowed: bool = False
     audit_required: bool = True

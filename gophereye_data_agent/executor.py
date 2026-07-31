@@ -6,10 +6,11 @@ from src.gophereye_runtime.utils import write_json
 
 from .integrations import export_label_studio, log_mlflow, open_fiftyone, sync_hf_hub, version_dvc, version_lakefs
 from .labeling import run_labeling
+from .manifest_store import read_manifest, write_manifest
 from .paths import DEFAULT_JOB_ROOT, DEFAULT_WORKSPACE_ROOT, root_relative
 from .patch_engine import patch_instances
 from .schemas import JobResult, OperationPlan, OperationResult, OperationType
-from .storage import create_job_dir, write_audit_event, write_job_json
+from .storage import create_job_dir
 from .targets import resolve_targets
 from .vision import run_augmentation, run_embeddings, run_segmentation
 
@@ -23,25 +24,14 @@ def execute_plan(
     job_dir: Path | None = None,
 ) -> JobResult:
     job_dir = job_dir or create_job_dir(job_root=job_root)
-    write_job_json(job_dir, "operation_plan.json", plan.model_dump())
     targets = resolve_targets(plan.target_selector, workspace_root=workspace_root)
-    write_job_json(job_dir, "resolved_targets.json", [target.model_dump() for target in targets])
-    write_audit_event(
-        job_dir,
-        {
-            "event_type": "job_started",
-            "job_id": job_dir.name,
-            "dry_run": not apply,
-            "target_count": len(targets),
-        },
-    )
 
     operation_results: list[OperationResult] = []
     for operation in plan.operations:
         selector = operation.target_selector or plan.target_selector
         op_targets = targets if selector == plan.target_selector else resolve_targets(selector, workspace_root=workspace_root)
         try:
-            if operation.operation_type == OperationType.MODIFY_INSTANCE_JSON:
+            if operation.operation_type in {OperationType.MODIFY_MANIFEST, OperationType.MODIFY_INSTANCE_JSON}:
                 result = patch_instances(
                     op_targets,
                     operation.patch_actions,
@@ -52,7 +42,7 @@ def execute_plan(
             elif operation.operation_type == OperationType.SEGMENTATION:
                 result = run_segmentation(op_targets, job_dir=job_dir, params=operation.params, workspace_root=workspace_root)
             elif operation.operation_type == OperationType.GRAPE_DISEASE_LABELING:
-                result = run_labeling(op_targets, job_dir=job_dir, params=operation.params)
+                result = run_labeling(op_targets, job_dir=job_dir, params=operation.params, workspace_root=workspace_root)
             elif operation.operation_type == OperationType.EMBEDDING:
                 result = run_embeddings(op_targets, job_dir=job_dir, params=operation.params, workspace_root=workspace_root)
             elif operation.operation_type == OperationType.AUGMENTATION:
@@ -84,15 +74,7 @@ def execute_plan(
                 targets_seen=len(op_targets),
             )
         operation_results.append(result)
-        write_audit_event(
-            job_dir,
-            {
-                "event_type": "operation_finished",
-                "operation_type": result.operation_type,
-                "status": result.status,
-                "message": result.message,
-            },
-        )
+        update_manifest_from_result(workspace_root, result)
 
     status = "ok"
     blocking_statuses = {"failed", "not_available"}
@@ -107,6 +89,67 @@ def execute_plan(
         operation_results=operation_results,
         status=status,  # type: ignore[arg-type]
     )
-    write_json(job_dir / "job_result.json", job_result.model_dump())
-    write_audit_event(job_dir, {"event_type": "job_finished", "status": status})
+    write_json(job_dir / "run_summary.json", summarize_job_result(job_result))
     return job_result
+
+
+def summarize_job_result(job_result: JobResult) -> dict[str, object]:
+    operations = []
+    for result in job_result.operation_results:
+        row = {
+            "operation_type": result.operation_type,
+            "status": result.status,
+            "message": result.message,
+            "artifacts": result.artifacts,
+        }
+        errors = result.details.get("errors") if isinstance(result.details, dict) else None
+        if errors:
+            row["errors"] = errors
+        operations.append(row)
+    return {
+        "job_id": job_result.job_id,
+        "job_dir": job_result.job_dir,
+        "status": job_result.status,
+        "dry_run": job_result.dry_run,
+        "target_count": len(job_result.targets),
+        "targets": [target.instance_id for target in job_result.targets],
+        "operations": operations,
+    }
+
+
+def update_manifest_from_result(workspace_root: Path, result: OperationResult) -> None:
+    rows = read_manifest(workspace_root)
+    if not rows:
+        return
+    by_id = {str(row.get("instance_id")): row for row in rows}
+    changed = False
+
+    if result.operation_type == "grape_disease_labeling":
+        for proposal in result.details.get("proposals", []):
+            instance_id = str(proposal.get("instance_id") or "")
+            row = by_id.get(instance_id)
+            if not row:
+                continue
+            row["label"] = proposal.get("disease") or "unknown"
+            row["label_confidence"] = proposal.get("confidence") or "unknown"
+            row["label_source"] = proposal.get("source", {}).get("method") or "data_agent_labeling"
+            for artifact in result.artifacts:
+                if instance_id in artifact:
+                    row["latest_label_artifact"] = artifact
+                    break
+            changed = True
+
+    artifact_field_by_operation = {
+        "segmentation": "latest_segmentation_artifact",
+        "embedding": "latest_embedding_artifact",
+        "augmentation": "latest_augmentation_artifact",
+    }
+    artifact_field = artifact_field_by_operation.get(result.operation_type)
+    if artifact_field and result.artifacts:
+        artifact_value = result.artifacts[-1]
+        for row in rows:
+            row[artifact_field] = artifact_value
+        changed = True
+
+    if changed:
+        write_manifest(workspace_root, rows)

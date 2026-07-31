@@ -13,9 +13,9 @@ from src.gophereye_runtime.utils import read_json, safe_print, write_json
 
 from . import __version__
 from .agents_runtime import agents_sdk_status
-from .executor import execute_plan
+from .executor import execute_plan, summarize_job_result
 from .mcp_server import mcp_status, run_mcp_server
-from .pair_import import import_image_pairs
+from .sample_import import import_image_samples
 from .paths import normalize_path, root_relative
 from .planner import make_plan
 from .schemas import DataOperation, JsonPatchAction, OperationPlan, OperationType, TargetSelector
@@ -24,11 +24,39 @@ from .schemas import DataOperation, JsonPatchAction, OperationPlan, OperationTyp
 app = typer.Typer(help="Independent GopherEye Data Agent CLI.")
 console = Console()
 CLI_DEFAULT_WORKSPACE_ROOT = Path("gophereye_data_workspace")
-CLI_DEFAULT_JOB_ROOT = Path("gophereye_data_workspace/jobs")
+CLI_DEFAULT_JOB_ROOT = Path("gophereye_data_workspace/runs")
 
 
 def print_json(value: object) -> None:
     safe_print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
+def print_job_summary(result: object) -> None:
+    print_json(summarize_job_result(result))  # type: ignore[arg-type]
+
+
+def parse_sample_ids(sample_ids: str | None, pair_ids: str | None = None) -> list[str] | None:
+    selected_ids = sample_ids or pair_ids
+    return [item.strip() for item in selected_ids.split(",") if item.strip()] if selected_ids else None
+
+
+def run_import_samples_command(
+    image_root: Path,
+    *,
+    sample_ids: str | None,
+    pair_ids: str | None,
+    workspace_root: Path,
+    copy_images: bool,
+    overwrite: bool,
+) -> None:
+    result = import_image_samples(
+        normalize_path(image_root),
+        workspace_root=normalize_path(workspace_root),
+        sample_ids=parse_sample_ids(sample_ids, pair_ids),
+        copy_images=copy_images,
+        overwrite=overwrite,
+    )
+    print_json(result)
 
 
 @app.command()
@@ -71,24 +99,125 @@ def schema_command() -> None:
     print_json(OperationPlan.model_json_schema())
 
 
-@app.command("import-pairs")
-def import_pairs(
-    image_root: Annotated[Path, typer.Argument(help="Root containing numbered pair folders, e.g. images/.")],
-    pair_ids: Annotated[str | None, typer.Option(help="Comma-separated pair folder ids, e.g. 1,2.")] = None,
+@app.command("import-samples")
+def import_samples(
+    image_root: Annotated[Path, typer.Argument(help="Root containing numbered sample folders or image files, e.g. images/.")],
+    sample_ids: Annotated[str | None, typer.Option(help="Comma-separated sample folder/file ids, e.g. 1,2.")] = None,
+    pair_ids: Annotated[str | None, typer.Option(help="Deprecated alias for --sample-ids.", hidden=True)] = None,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root to create or update.")] = CLI_DEFAULT_WORKSPACE_ROOT,
     copy_images: Annotated[bool, typer.Option(help="Copy images into the workspace. Default references original files.")] = False,
-    overwrite: Annotated[bool, typer.Option(help="Overwrite existing imported pair instances.")] = True,
+    overwrite: Annotated[bool, typer.Option(help="Overwrite existing manifest rows for the same sample ids.")] = True,
 ) -> None:
-    """Import numbered leaf front/back image-pair folders as workspace instances."""
-    ids = [item.strip() for item in pair_ids.split(",") if item.strip()] if pair_ids else None
-    result = import_image_pairs(
-        normalize_path(image_root),
-        workspace_root=normalize_path(workspace_root),
-        pair_ids=ids,
+    """Import leaf image samples into the dataset manifest."""
+    run_import_samples_command(
+        image_root,
+        sample_ids=sample_ids,
+        pair_ids=pair_ids,
+        workspace_root=workspace_root,
         copy_images=copy_images,
         overwrite=overwrite,
     )
-    print_json(result)
+
+
+@app.command("import-pairs", hidden=True, deprecated=True)
+def import_pairs(
+    image_root: Annotated[Path, typer.Argument(help="Root containing numbered sample folders or image files, e.g. images/.")],
+    sample_ids: Annotated[str | None, typer.Option(help="Comma-separated sample folder/file ids, e.g. 1,2.")] = None,
+    pair_ids: Annotated[str | None, typer.Option(help="Deprecated alias for --sample-ids.")] = None,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root to create or update.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    copy_images: Annotated[bool, typer.Option(help="Copy images into the workspace. Default references original files.")] = False,
+    overwrite: Annotated[bool, typer.Option(help="Overwrite existing manifest rows for the same sample ids.")] = True,
+) -> None:
+    """Deprecated alias for import-samples."""
+    run_import_samples_command(
+        image_root,
+        sample_ids=sample_ids,
+        pair_ids=pair_ids,
+        workspace_root=workspace_root,
+        copy_images=copy_images,
+        overwrite=overwrite,
+    )
+
+
+@app.command("auto")
+def auto(
+    image_root: Annotated[Path, typer.Argument(help="Root containing numbered sample folders or image files, e.g. images/.")],
+    sample_ids: Annotated[str | None, typer.Option(help="Comma-separated sample folder/file ids, e.g. 1,2.")] = None,
+    pair_ids: Annotated[str | None, typer.Option(help="Deprecated alias for --sample-ids.", hidden=True)] = None,
+    workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
+    max_items: Annotated[int, typer.Option(help="Max manifest rows to process after import.")] = 50,
+    label: Annotated[bool, typer.Option(help="Create grape disease label proposals and update manifest.")] = True,
+    label_provider: Annotated[str, typer.Option(help="openai, anthropic, claude, or heuristic.")] = "openai",
+    label_model: Annotated[str | None, typer.Option(help="LLM labeler model name.")] = None,
+    embed: Annotated[bool, typer.Option(help="Compute image embeddings.")] = True,
+    augment: Annotated[bool, typer.Option(help="Create image augmentations.")] = True,
+    export_ls: Annotated[bool, typer.Option("--export-label-studio/--no-export-label-studio", help="Export Label Studio task JSON.")] = True,
+    segment_backend: Annotated[str, typer.Option(help="none, yolo, or sam2.")] = "none",
+    yolo_model: Annotated[Path, typer.Option(help="Local YOLO segmentation model path.")] = Path("mode/yolo_grape.pt"),
+    count_per_image: Annotated[int, typer.Option(help="Augmented variants per image.")] = 1,
+) -> None:
+    """Import image samples and run the lightweight Data Agent automation in one command."""
+    ids = parse_sample_ids(sample_ids, pair_ids)
+    workspace = normalize_path(workspace_root)
+    import_result = import_image_samples(normalize_path(image_root), workspace_root=workspace, sample_ids=ids)
+    operations: list[DataOperation] = []
+    if segment_backend != "none":
+        operations.append(
+            DataOperation(
+                operation_type=OperationType.SEGMENTATION,
+                description="Auto segmentation.",
+                params={"backend": segment_backend, "model": str(yolo_model)},
+            )
+        )
+    if label:
+        label_params = {"provider": label_provider}
+        if label_model:
+            label_params["model"] = label_model
+        operations.append(
+            DataOperation(
+                operation_type=OperationType.GRAPE_DISEASE_LABELING,
+                description="Auto grape disease label proposals.",
+                params=label_params,
+            )
+        )
+    if embed:
+        operations.append(
+            DataOperation(
+                operation_type=OperationType.EMBEDDING,
+                description="Auto image embeddings.",
+                params={"backend": "color_histogram", "persist_vector_index": True},
+            )
+        )
+    if augment:
+        operations.append(
+            DataOperation(
+                operation_type=OperationType.AUGMENTATION,
+                description="Auto image augmentation.",
+                params={"count_per_image": count_per_image},
+            )
+        )
+    if export_ls:
+        operations.append(
+            DataOperation(
+                operation_type=OperationType.EXPORT_LABEL_STUDIO,
+                description="Auto Label Studio export.",
+            )
+        )
+    result = execute_plan(
+        make_manual_plan(
+            "Auto import and process image samples",
+            selector=TargetSelector(source="dataset", max_items=max_items),  # type: ignore[arg-type]
+            operations=operations,
+        ),
+        workspace_root=workspace,
+        job_root=normalize_path(job_root),
+    )
+    summary = summarize_job_result(result)
+    summary["import"] = import_result
+    summary["manifest_csv"] = import_result.get("manifest_csv")
+    summary["manifest_jsonl"] = import_result.get("manifest_jsonl")
+    print_json(summary)
 
 
 @app.command()
@@ -113,9 +242,9 @@ def run(
     model: Annotated[str | None, typer.Option(help="Planner model name.")] = None,
     apply: Annotated[bool, typer.Option(help="Apply modifying operations. Default is dry-run.")] = False,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
-    """Plan and execute a Data Agent job."""
+    """Plan and execute a Data Agent run."""
     operation_plan = make_plan(prompt, planner=planner, model=model)
     result = execute_plan(
         operation_plan,
@@ -123,14 +252,14 @@ def run(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command()
 def apply(
     plan_path: Annotated[Path, typer.Argument(help="Path to operation_plan.json.")],
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
     """Apply a saved operation plan."""
     raw = read_json(normalize_path(plan_path))
@@ -141,21 +270,21 @@ def apply(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command()
 def modify(
     json_pointer: Annotated[str, typer.Argument(help="JSON pointer, e.g. /corrections/group_id.")],
     value: Annotated[str, typer.Argument(help="String value to write.")],
-    file: Annotated[str, typer.Option(help="manifest, model_label, human_review_template, upload_record, etc.")] = "human_review_template",
-    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    file: Annotated[str, typer.Option(help="manifest. Other values are accepted for backward compatibility.")] = "manifest",
+    source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     apply: Annotated[bool, typer.Option(help="Apply writes. Default is dry-run.")] = False,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
-    """Build and run a focused instance JSON modification plan."""
+    """Build and run a focused dataset manifest modification plan."""
     selector = TargetSelector(source=source, max_items=max_items)  # type: ignore[arg-type]
     action = JsonPatchAction(file=file, json_pointer=json_pointer, value=value, reason="CLI modify command.")  # type: ignore[arg-type]
     operation_plan = make_manual_plan(
@@ -163,8 +292,8 @@ def modify(
         selector=selector,
         operations=[
             DataOperation(
-                operation_type=OperationType.MODIFY_INSTANCE_JSON,
-                description="CLI JSON modification.",
+                operation_type=OperationType.MODIFY_MANIFEST,
+                description="CLI manifest modification.",
                 patch_actions=[action],
             )
         ],
@@ -175,20 +304,20 @@ def modify(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command()
 def segment(
-    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
     backend: Annotated[str, typer.Option(help="auto, yolo, or sam2.")] = "auto",
-    model: Annotated[str | None, typer.Option(help="YOLO model path/name.")] = None,
+    model: Annotated[str | None, typer.Option(help="YOLO model path/name. Defaults to mode/yolo_grape.pt.")] = None,
     checkpoint: Annotated[Path | None, typer.Option(help="SAM2 checkpoint path.")] = None,
     model_cfg: Annotated[str | None, typer.Option(help="SAM2 model config path/name.")] = None,
     pretrained: Annotated[str | None, typer.Option(help="SAM2 Hugging Face pretrained id.")] = None,
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
     """Run segmentation on selected targets."""
     params = {"backend": backend}
@@ -215,16 +344,17 @@ def segment(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command()
 def label(
-    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
-    provider: Annotated[str, typer.Option(help="heuristic or openai.")] = "heuristic",
+    source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
+    provider: Annotated[str, typer.Option(help="openai, anthropic, claude, or heuristic.")] = "openai",
+    model: Annotated[str | None, typer.Option(help="LLM labeler model name.")] = None,
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
     """Create grape disease label proposals."""
     result = execute_plan(
@@ -235,23 +365,23 @@ def label(
                 DataOperation(
                     operation_type=OperationType.GRAPE_DISEASE_LABELING,
                     description="CLI grape disease label proposals.",
-                    params={"provider": provider},
+                    params={"provider": provider, **({"model": model} if model else {})},
                 )
             ],
         ),
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command()
 def embed(
-    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     persist_vector_index: Annotated[bool, typer.Option(help="Try to persist vectors to LanceDB.")] = False,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
     """Compute image embeddings."""
     result = execute_plan(
@@ -269,16 +399,16 @@ def embed(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command()
 def augment(
-    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     count_per_image: Annotated[int, typer.Option(help="Augmented variants per image.")] = 3,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
     """Create augmented image derivatives."""
     result = execute_plan(
@@ -296,15 +426,15 @@ def augment(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command("export-label-studio")
 def export_label_studio(
-    source: Annotated[str, typer.Option(help="Target source.")] = "pending_reviews",
+    source: Annotated[str, typer.Option(help="Target source.")] = "dataset",
     max_items: Annotated[int, typer.Option(help="Max targets.")] = 50,
     workspace_root: Annotated[Path, typer.Option(help="GopherEye Data Agent workspace root.")] = CLI_DEFAULT_WORKSPACE_ROOT,
-    job_root: Annotated[Path, typer.Option(help="Data Agent job root.")] = CLI_DEFAULT_JOB_ROOT,
+    job_root: Annotated[Path, typer.Option(help="Data Agent run root.")] = CLI_DEFAULT_JOB_ROOT,
 ) -> None:
     """Export selected targets as Label Studio task JSON."""
     result = execute_plan(
@@ -321,7 +451,7 @@ def export_label_studio(
         workspace_root=normalize_path(workspace_root),
         job_root=normalize_path(job_root),
     )
-    print_json(result.model_dump())
+    print_job_summary(result)
 
 
 @app.command("mcp-server")

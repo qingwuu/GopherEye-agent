@@ -34,7 +34,7 @@ def create_job_dir(job_root: Path = DEFAULT_JOB_ROOT, job_id: str | None = None)
             path = None
     if path is None:
         raise FileExistsError(f"Could not create a unique Data Agent job directory under {job_root}")
-    for child in ["artifacts", "backups", "logs"]:
+    for child in ["artifacts"]:
         (path / child).mkdir(parents=True, exist_ok=True)
     return path
 

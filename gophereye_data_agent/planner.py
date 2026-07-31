@@ -18,7 +18,7 @@ The executor, not the model, performs file writes and model inference.
 Safety rules:
 - Machine labels are proposals only; never mark ground_truth true.
 - Use dry-run by default.
-- For metadata edits, prefer human_review_template /corrections/* unless the user names a specific file and field.
+- For metadata edits, update the dataset manifest unless the user names a specific artifact file.
 - Do not invent image paths or instance IDs.
 """
 
@@ -39,7 +39,7 @@ def rule_based_plan(prompt: str) -> OperationPlan:
     plan = default_plan(prompt, planner="rule")
     text = prompt.lower()
 
-    selector = TargetSelector(source="pending_reviews", max_items=50)
+    selector = TargetSelector(source="dataset", max_items=50)
     max_match = re.search(r"(?:first|limit|max)\s+(\d+)", text)
     if max_match:
         selector.max_items = int(max_match.group(1))
@@ -48,7 +48,7 @@ def rule_based_plan(prompt: str) -> OperationPlan:
     if "completed" in text:
         selector.source = "completed_reviews"
     if "all" in text:
-        selector.source = "workspace_instances"
+        selector.source = "dataset"
 
     plan.target_selector = selector
 
@@ -56,8 +56,8 @@ def rule_based_plan(prompt: str) -> OperationPlan:
     if patch_actions or "modify" in text or "set " in text or "change " in text:
         plan.operations.append(
             DataOperation(
-                operation_type=OperationType.MODIFY_INSTANCE_JSON,
-                description="Modify existing instance JSON through validated patch actions.",
+                operation_type=OperationType.MODIFY_MANIFEST,
+                description="Modify the dataset manifest through validated patch actions.",
                 patch_actions=patch_actions,
                 params={"requires_explicit_actions": not bool(patch_actions)},
             )
@@ -65,22 +65,26 @@ def rule_based_plan(prompt: str) -> OperationPlan:
 
     if any(token in text for token in ["segment", "segmentation", "mask", "sam", "yolo"]):
         backend = "sam2" if "sam" in text else "yolo" if "yolo" in text else "auto"
+        params = {"backend": backend, "target": "generic_leaf_or_symptom"}
+        if backend == "yolo":
+            params["model"] = "mode/yolo_grape.pt"
         plan.operations.append(
             DataOperation(
                 operation_type=OperationType.SEGMENTATION,
                 description="Generate segmentation artifacts.",
-                params={"backend": backend, "target": "generic_leaf_or_symptom"},
+                params=params,
             )
         )
 
     if any(token in text for token in ["label", "labeling", "disease", "powdery", "downy"]):
+        provider = "anthropic" if ("claude" in text or "anthropic" in text) else "openai" if "openai" in text else "openai"
         plan.operations.append(
             DataOperation(
                 operation_type=OperationType.GRAPE_DISEASE_LABELING,
                 description="Create grape disease label proposals.",
                 params={
                     "allowed_labels": ["powdery_mildew", "downy_mildew", "healthy", "unknown", "not_leaf"],
-                    "provider": "heuristic",
+                    "provider": provider,
                     "write_back": False,
                 },
             )
@@ -172,7 +176,7 @@ def parse_simple_set_actions(prompt: str) -> list[JsonPatchAction]:
         actions.append(
             JsonPatchAction(
                 op="set",
-                file="human_review_template",
+                file="manifest",
                 json_pointer=f"/corrections/{escape_json_pointer(field)}",
                 value=value,
                 reason="Parsed from natural-language set expression.",

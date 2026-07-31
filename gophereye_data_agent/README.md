@@ -1,101 +1,111 @@
 # GopherEye Data Agent
 
-This is the independent GopherEye Data Agent runtime. It is separate from
-`Frontier_model/` and does not use the old session-archive data pipeline.
+Independent CLI-first data automation for grape leaf image samples.
 
-## Purpose
+A sample can be:
+
+- one standalone image, such as `images/1b.png`
+- one folder with two related images, such as a front/back leaf pair
+- one folder with more than two related images
+
+The runtime is intentionally simple:
 
 ```text
-natural-language data request
--> operation plan schema
--> deterministic executor
--> optional vision / annotation / dataset tools
--> artifacts + audit logs
+images/
+-> dataset_manifest.csv
+-> dataset_manifest.jsonl
+-> runs/<run_id>/artifacts/
 ```
 
-The LLM plans. Python executes. Ground-truth labels still require human review.
+It does not use the old chat/session archive pipeline.
 
-## Quick Commands
+## Main Commands
+
+Import only:
+
+```bash
+python -m gophereye_data_agent import-samples images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test
+```
+
+OpenAI labeler:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider openai
+```
+
+Claude labeler:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider anthropic
+```
+
+The `auto` command:
+
+```text
+1. imports selected image samples
+2. writes dataset_manifest.csv/jsonl
+3. sends each sample's image(s) to OpenAI or Claude for grape disease label proposal
+4. runs embedding
+5. runs augmentation
+6. exports Label Studio tasks
+7. writes one run_summary.json
+```
+
+## Important Files
+
+```text
+gophereye_data_workspace/
+  dataset_manifest.csv       human-readable dataset table
+  dataset_manifest.jsonl     structured manifest for code
+  runs/
+    dagent_<id>/
+      run_summary.json
+      artifacts/
+        labels/
+        embeddings/
+        augmented/
+        label_studio_tasks.json
+```
+
+There are no `instances/`, `review_queue/`, or `indexes/` directories in the simple pipeline.
+
+## Useful Commands
 
 ```bash
 python -m gophereye_data_agent doctor
-python -m gophereye_data_agent plan "segment pending images and label grape disease"
-python -m gophereye_data_agent run "segment pending images and label grape disease"
-python -m gophereye_data_agent modify /corrections/group_id plot_a --apply
-python -m gophereye_data_agent segment --backend yolo
-python -m gophereye_data_agent segment --backend sam2
-python -m gophereye_data_agent label --provider heuristic
+python -m gophereye_data_agent import-samples images --sample-ids 1,2,1b
+python -m gophereye_data_agent auto images --sample-ids 1,2,1b --label-provider openai
+python -m gophereye_data_agent label --provider openai
+python -m gophereye_data_agent label --provider anthropic
 python -m gophereye_data_agent embed
-python -m gophereye_data_agent augment --count-per-image 3
+python -m gophereye_data_agent augment --count-per-image 1
 python -m gophereye_data_agent export-label-studio
+python -m gophereye_data_agent segment --backend yolo --model mode/yolo_grape.pt --max-items 1
+python -m gophereye_data_agent modify /batch_id test_batch --apply
 ```
 
-`run` is dry-run for JSON modification by default. Use `--apply` only when you
-intend to write instance JSON.
-
-Most commands accept `--workspace-root` and `--job-root`. The default workspace
-is `gophereye_data_workspace/`, which is reserved for GopherEye Data Agent
-instances, jobs, and artifacts.
-
-## Optional Integrations
-
-The core CLI uses Typer and Pydantic. External tools are optional:
+YOLO segmentation is local-only by default. Put your trained segmentation weights at:
 
 ```text
-OpenAI Agents SDK
-MCP
-Ultralytics YOLO
-SAM2
-Albumentations
-FiftyOne
-Label Studio
-Hugging Face Hub
-MLflow
-DVC
-lakeFS
-LanceDB
-DuckDB
+mode/yolo_grape.pt
 ```
 
-Missing integrations return `not_available` instead of crashing the job.
+or pass another local path with `--model`.
 
-SAM2 needs an importable `sam2` package plus either:
-
-```bash
-python -m gophereye_data_agent segment --backend sam2 --model-cfg <cfg> --checkpoint <checkpoint>
-```
-
-or environment variables:
-
-```bash
-GOPHEREYE_SAM2_PRETRAINED=facebook/sam2-hiera-large
-GOPHEREYE_SAM2_MODEL_CFG=configs/sam2.1/sam2.1_hiera_l.yaml
-GOPHEREYE_SAM2_CHECKPOINT=checkpoints/sam2.1_hiera_large.pt
-```
-
-## Runtime Outputs
-
-```text
-gophereye_data_workspace/jobs/
-  dagent_<id>/
-    operation_plan.json
-    resolved_targets.json
-    job_result.json
-    audit_events.jsonl
-    backups/
-    artifacts/
-```
-
-## MVP Operation Order
-
-```text
-LLM planner schema
--> modify instance JSON
--> generic segmentation
--> grape disease label proposal
--> embedding
--> augmentation
-```
-
-Disease-specific segmentation refinement can be added after labeling when the
-first generic masks and disease proposal are available.
+Ground-truth labels still require human review. Model labels are proposals only.

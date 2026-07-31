@@ -3,18 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.gophereye_runtime.utils import local_path_from_ref, read_json, read_jsonl
+from src.gophereye_runtime.utils import local_path_from_ref, read_json
 
+from .manifest_store import attach_manifest_path, manifest_row_to_target, read_manifest
 from .paths import DEFAULT_WORKSPACE_ROOT, REPO_ROOT, normalize_path, root_relative
 from .schemas import InstanceTarget, TargetSelector
 
 
 INSTANCE_FILES = {
-    "manifest": "manifest.json",
-    "upload_record": "upload_record.json",
-    "model_label": "model_label.json",
-    "human_review_template": "human_review.template.json",
-    "human_review_submitted": "human_review.submitted.json",
+    "manifest": "dataset_manifest.jsonl",
+    "upload_record": "dataset_manifest.jsonl",
+    "model_label": "dataset_manifest.jsonl",
+    "human_review_template": "dataset_manifest.jsonl",
+    "human_review_submitted": "dataset_manifest.jsonl",
 }
 
 
@@ -23,54 +24,6 @@ def read_json_if_exists(path: Path) -> dict[str, Any]:
         return {}
     value = read_json(path)
     return value if isinstance(value, dict) else {}
-
-
-def iter_instance_dirs(workspace_root: Path = DEFAULT_WORKSPACE_ROOT) -> list[Path]:
-    root = workspace_root / "instances"
-    if not root.exists():
-        return []
-    return sorted(path for path in root.iterdir() if path.is_dir())
-
-
-def target_from_instance_dir(instance_dir: Path) -> InstanceTarget:
-    manifest = read_json_if_exists(instance_dir / "manifest.json")
-    model_label = read_json_if_exists(instance_dir / "model_label.json")
-    upload_record = read_json_if_exists(instance_dir / "upload_record.json")
-    review = read_json_if_exists(instance_dir / "human_review.submitted.json")
-    instance_id = str(
-        manifest.get("instance_id")
-        or model_label.get("instance_id")
-        or upload_record.get("instance_id")
-        or instance_dir.name
-    )
-    image_links = []
-    if isinstance(upload_record.get("uploads"), list):
-        image_links.extend(row for row in upload_record["uploads"] if isinstance(row, dict))
-    if isinstance(manifest.get("linked_files"), dict):
-        image_links.extend(row for row in manifest["linked_files"].get("uploads", []) if isinstance(row, dict))
-    return InstanceTarget(
-        instance_id=instance_id,
-        instance_dir=root_relative(instance_dir),
-        source={"kind": "instance_dir"},
-        manifest=manifest,
-        model_label=model_label,
-        upload_record=upload_record,
-        review=review,
-        image_links=dedupe_image_links(image_links),
-    )
-
-
-def dedupe_image_links(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        key = str(row.get("image_id") or row.get("source_ref") or len(out))
-        old = out.get(key, {})
-        out[key] = {**old, **row}
-    return list(out.values())
-
-
-def index_rows(workspace_root: Path, name: str) -> list[dict[str, Any]]:
-    return read_jsonl(workspace_root / "indexes" / name)
 
 
 def resolve_workspace_ref(ref: str, workspace_root: Path) -> Path | None:
@@ -82,58 +35,27 @@ def resolve_workspace_ref(ref: str, workspace_root: Path) -> Path | None:
     return repo_candidate or workspace_candidate
 
 
-def targets_from_index(selector: TargetSelector, workspace_root: Path) -> list[InstanceTarget]:
-    if selector.source == "pending_reviews":
-        queue_rows = read_jsonl(workspace_root / "review_queue" / "pending.jsonl")
-    elif selector.source == "completed_reviews":
-        queue_rows = read_jsonl(workspace_root / "review_queue" / "completed.jsonl")
-    elif selector.source == "reviewed_dataset":
-        queue_rows = index_rows(workspace_root, "reviewed_dataset_index.jsonl")
-    else:
-        queue_rows = []
-
-    targets: list[InstanceTarget] = []
-    labels_by_instance = {
-        str(row.get("instance_id")): row
-        for row in index_rows(workspace_root, "model_labels.jsonl")
-        if row.get("instance_id")
-    }
-    uploads_by_instance: dict[str, list[dict[str, Any]]] = {}
-    for row in index_rows(workspace_root, "uploads.jsonl"):
-        if row.get("instance_id"):
-            uploads_by_instance.setdefault(str(row["instance_id"]), []).append(row)
-
-    for row in queue_rows:
-        instance_id = str(row.get("instance_id") or "")
-        if not instance_id:
-            continue
-        instance_dir_text = row.get("instance_dir")
-        instance_dir = (
-            resolve_workspace_ref(str(instance_dir_text), workspace_root)
-            if instance_dir_text
-            else workspace_root / "instances" / instance_id
-        )
-        if instance_dir is None:
-            instance_dir = workspace_root / "instances" / instance_id
-        if instance_dir.exists():
-            target = target_from_instance_dir(instance_dir)
-        else:
-            target = InstanceTarget(
-                instance_id=instance_id,
-                instance_dir=root_relative(instance_dir),
-                source={"kind": selector.source, "row": row},
-                model_label=labels_by_instance.get(instance_id, {}),
-                image_links=uploads_by_instance.get(instance_id, []),
-            )
-        targets.append(target)
-    return targets
-
-
 def target_from_explicit_path(path_text: str) -> InstanceTarget:
     path = normalize_path(path_text)
     if path.is_dir():
-        return target_from_instance_dir(path)
+        row = {
+            "instance_id": path.name,
+            "sample_id": path.name,
+            "pair_id": path.name,
+            "source_dir": root_relative(path),
+            "sample_type": "directory",
+            "image_count": 0,
+            "image_paths": [],
+            "side_1_path": "",
+            "side_2_path": "",
+            "label": "unknown",
+            "label_confidence": "unknown",
+            "review_status": "unreviewed",
+        }
+        return manifest_row_to_target(row)
     value = read_json_if_exists(path)
+    if "side_1_path" in value or "side_2_path" in value:
+        return manifest_row_to_target(value)
     instance_id = str(value.get("instance_id") or path.stem)
     return InstanceTarget(
         instance_id=instance_id,
@@ -153,10 +75,7 @@ def passes_filters(target: InstanceTarget, selector: TargetSelector) -> bool:
     review_status = str(target.manifest.get("review_status") or target.model_label.get("review_status") or "")
     if selector.review_status and review_status not in selector.review_status:
         return False
-    evidence_status = str(target.model_label.get("evidence_status") or "")
-    if selector.evidence_status and evidence_status not in selector.evidence_status:
-        return False
-    label = str((target.model_label.get("model_diagnosis") or {}).get("label") or "")
+    label = str(target.manifest.get("label") or (target.model_label.get("model_diagnosis") or {}).get("label") or "")
     if selector.model_labels and label not in selector.model_labels:
         return False
     if not selector.include_without_images and not target.image_links:
@@ -165,12 +84,17 @@ def passes_filters(target: InstanceTarget, selector: TargetSelector) -> bool:
 
 
 def resolve_targets(selector: TargetSelector, workspace_root: Path = DEFAULT_WORKSPACE_ROOT) -> list[InstanceTarget]:
-    if selector.source == "workspace_instances":
-        targets = [target_from_instance_dir(path) for path in iter_instance_dirs(workspace_root)]
-    elif selector.source == "explicit_paths":
+    if selector.source == "explicit_paths":
         targets = [target_from_explicit_path(path) for path in selector.paths]
     else:
-        targets = targets_from_index(selector, workspace_root)
+        rows = attach_manifest_path(read_manifest(workspace_root), workspace_root)
+        if selector.source == "completed_reviews":
+            rows = [row for row in rows if str(row.get("review_status")) == "reviewed"]
+        elif selector.source == "reviewed_dataset":
+            rows = [row for row in rows if bool(row.get("is_ground_truth"))]
+        elif selector.source == "pending_reviews":
+            rows = [row for row in rows if str(row.get("review_status") or "unreviewed") != "reviewed"]
+        targets = [manifest_row_to_target(row) for row in rows]
 
     filtered = [target for target in targets if passes_filters(target, selector)]
     if selector.max_items:

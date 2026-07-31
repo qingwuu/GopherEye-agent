@@ -6,6 +6,7 @@ from typing import Any
 
 from src.gophereye_runtime.utils import read_json, stable_id, write_json
 
+from .manifest_store import read_manifest, write_manifest
 from .paths import DEFAULT_WORKSPACE_ROOT, normalize_path, root_relative
 from .schemas import InstanceTarget, JsonPatchAction, OperationResult
 from .storage import write_instance_audit
@@ -112,6 +113,8 @@ def patch_instances(
             message="No patch actions were provided.",
             targets_seen=len(targets),
         )
+    if any(target.source.get("kind") == "manifest_row" for target in targets):
+        return patch_manifest_rows(targets, actions, job_dir=job_dir, apply=apply, workspace_root=workspace_root)
 
     changed: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
@@ -162,5 +165,54 @@ def patch_instances(
         status="ok" if status in {"ok", "partial"} else "failed",
         message=f"{len(changed)} patch actions {'applied' if apply else 'planned'}; {len(errors)} errors.",
         targets_seen=len(targets),
+        details={"changed": changed, "errors": errors},
+    )
+
+
+def patch_manifest_rows(
+    targets: list[InstanceTarget],
+    actions: list[JsonPatchAction],
+    *,
+    job_dir: Path,
+    apply: bool,
+    workspace_root: Path,
+) -> OperationResult:
+    rows = read_manifest(workspace_root)
+    target_ids = {target.instance_id for target in targets}
+    changed: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    updated_rows = []
+    for row in rows:
+        if str(row.get("instance_id")) not in target_ids:
+            updated_rows.append(row)
+            continue
+        current = copy.deepcopy(row)
+        try:
+            for action in actions:
+                current = apply_action(current, action)
+            changed.append(
+                {
+                    "instance_id": row.get("instance_id"),
+                    "file": root_relative(workspace_root / "dataset_manifest.jsonl"),
+                    "actions": len(actions),
+                    "applied": apply,
+                }
+            )
+        except Exception as exc:
+            errors.append({"instance_id": row.get("instance_id"), "error": str(exc)})
+            current = row
+        updated_rows.append(current)
+
+    if apply and changed:
+        write_json(job_dir / "backups" / "dataset_manifest.before.json", rows)
+        write_manifest(workspace_root, updated_rows)
+
+    status = "ok" if not errors else "failed" if not changed else "ok"
+    return OperationResult(
+        operation_type="modify_manifest",
+        status=status,
+        message=f"{len(changed)} manifest rows {'updated' if apply else 'planned'}; {len(errors)} errors.",
+        targets_seen=len(targets),
+        artifacts=[root_relative(workspace_root / "dataset_manifest.csv") or str(workspace_root / "dataset_manifest.csv")],
         details={"changed": changed, "errors": errors},
     )

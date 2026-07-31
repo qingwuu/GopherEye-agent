@@ -1,576 +1,481 @@
-# GopherEye Data Agent 启动与测试手册
+# GopherEye Data Agent 使用手册
 
-## 1. 每次从零启动
+这套 Data Agent 是独立 CLI pipeline，不走现在的 chat/frontier model，也不走旧 Session Archive。
 
-在 Git Bash 中进入 repo：
+当前数据单位叫 `sample`：
+
+- `images/1/` 这种 folder 是一个 sample，里面可以有 1 张、2 张或更多相关图片
+- `images/1b.png` 这种直接放在 `images/` 根目录的图片，也是一个独立 single-image sample
+- 如果一个 sample 恰好有两张图，可以把它理解成 leaf front/back pair，但系统不会强制要求一定是 pair
+
+## 1. 每次从头启动
+
+Git Bash:
 
 ```bash
 cd ~/OneDrive/文档/GitHub/GopherEye-agent
-```
-
-启用虚拟环境：
-
-```bash
 source .venv/Scripts/activate
-```
-
-建议设置 UTF-8，避免中文路径和表格显示乱码：
-
-```bash
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 ```
 
-确认依赖：
+检查依赖：
 
 ```bash
 python -m gophereye_data_agent doctor
 ```
 
-如果全部是 `yes`，说明外部工具已经被当前 `.venv` 识别。
+这一步只检查环境，不生成数据文件。
 
-## 2. 可选服务启动
+## 2. 最重要的数据文件
 
-### MLflow
-
-如果要把 Data Agent job 记录到 MLflow，先开一个单独 terminal：
-
-```bash
-source .venv/Scripts/activate
-
-mlflow server \
-  --host 127.0.0.1 \
-  --port 5000 \
-  --workers 1 \
-  --backend-store-uri sqlite:///gophereye_data_workspace/agent_artifacts/mlflow.db \
-  --default-artifact-root gophereye_data_workspace/agent_artifacts/mlartifacts
-```
-
-然后在 Data Agent terminal 里设置：
-
-```bash
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-```
-
-浏览器打开：
+Data Agent 现在只维护一个大的 manifest：
 
 ```text
-http://127.0.0.1:5000
+gophereye_data_workspace/<workspace>/
+  dataset_manifest.csv
+  dataset_manifest.jsonl
+  runs/
+    dagent_<run_id>/
+      run_summary.json
+      artifacts/
 ```
 
-### lakeFS
+主要看 `dataset_manifest.csv`。它是人可以打开看的总表。
 
-lakeFS 当前在 Data Agent 中是可检测/占位 adapter。真实 commit/upload 还需要后续补 repository、branch、path 的写入逻辑。
-
-如果你启动了 lakeFS quickstart，设置：
-
-```bash
-export LAKECTL_SERVER_ENDPOINT_URL=http://127.0.0.1:8000
-export LAKECTL_CREDENTIALS_ACCESS_KEY_ID="你的 access key"
-export LAKECTL_CREDENTIALS_SECRET_ACCESS_KEY="你的 secret key"
-```
-
-## 3. 从原始 pair 图片导入测试 workspace
-
-为了只测试 `images/1` 和 `images/2`，建议用独立 workspace root，不污染默认 `gophereye_data_workspace/`：
-
-```bash
-python -m gophereye_data_agent import-pairs images \
-  --pair-ids 1,2 \
-  --workspace-root gophereye_data_workspace/pair_test
-```
-
-这一步做的事：
-
-- 扫描 `images/1/` 和 `images/2/`
-- 每个文件夹生成一个 instance
-- 写入 `manifest.json`
-- 写入 `upload_record.json`
-- 写入 `model_label.json`
-- 写入 `human_review.template.json`
-- 生成 `review_queue/pending.jsonl`
-- 生成 `indexes/*.jsonl`
-
-输出应类似：
+不会再生成这些旧复杂目录：
 
 ```text
-pairs_imported: 2
-inst_pair_1 -> images/1/*.jpeg
-inst_pair_2 -> images/2/*.jpeg
+instances/
+review_queue/
+indexes/
 ```
 
-后续测试统一使用：
+## 3. Manifest 每一行是什么
 
-```bash
-WORKSPACE=gophereye_data_workspace/pair_test
-JOBS=gophereye_data_workspace/pair_test/jobs
-```
+`dataset_manifest.csv` 每一行是一个 sample，不是一张图。
 
-## 4. 查看和规划
-
-查看 operation plan schema：
-
-```bash
-python -m gophereye_data_agent schema
-```
-
-用自然语言生成计划，不执行：
-
-```bash
-python -m gophereye_data_agent plan \
-  "set batch_id=pair_test and label grape disease and embed similar images and augment"
-```
-
-保存计划到文件：
-
-```bash
-python -m gophereye_data_agent plan \
-  "set batch_id=pair_test and label grape disease and embed similar images and augment" \
-  --out gophereye_data_workspace/pair_test/operation_plan.json
-```
-
-执行已保存计划：
-
-```bash
-python -m gophereye_data_agent apply \
-  gophereye_data_workspace/pair_test/operation_plan.json \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
-```
-
-注意：`modify_instance_json` 默认 dry-run。真正写 JSON 必须加 `--apply`，或者使用 `apply` 命令。
-
-## 5. Modify Instance JSON
-
-dry-run，只规划不写：
-
-```bash
-python -m gophereye_data_agent modify /corrections/batch_id pair_test \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
-```
-
-真正写入：
-
-```bash
-python -m gophereye_data_agent modify /corrections/batch_id pair_test \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --apply
-```
-
-这会修改：
+关键字段：
 
 ```text
-human_review.template.json
-  corrections.batch_id = "pair_test"
+instance_id                 代码内部使用的 sample id，例如 sample_1
+sample_id                   原始 sample id，例如 1、2、1b
+sample_type                 single / pair / multi_image
+image_count                 这个 sample 里面有几张图
+image_paths                 完整图片路径列表
+side_1_path                 第一张图，方便 pair 场景查看
+side_2_path                 第二张图，方便 pair 场景查看
+label                       当前标签 proposal
+label_confidence            标签置信度
+label_source                标签来源，例如 openai / anthropic / heuristic
+review_status               unreviewed / reviewed
+is_ground_truth             是否人工确认过
+latest_label_artifact       最新 label JSON artifact
+latest_segmentation_artifact
+latest_embedding_artifact
+latest_augmentation_artifact
+notes
+created_at
+updated_at
 ```
 
-并在 job 里保存 backup 和 audit log。
+`pair_id` 这个字段暂时还在，是为了兼容旧生成文件。新的流程请看 `sample_id`。
 
-## 6. Grape Disease Labeling
+## 4. 只导入图片
 
-启发式 labeling：
+测试 `images/1/`、`images/2/` 两个 folder，再加一个单张图 `images/1b.png`：
+
+```bash
+python -m gophereye_data_agent import-samples images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test
+```
+
+这一步会生成或更新：
+
+```text
+gophereye_data_workspace/simple_test/dataset_manifest.csv
+gophereye_data_workspace/simple_test/dataset_manifest.jsonl
+```
+
+输出里重点看：
+
+```text
+samples_seen
+samples_imported
+imported[].sample_id
+imported[].sample_type
+imported[].image_count
+manifest_csv
+manifest_jsonl
+```
+
+## 5. OpenAI 参与的一键流程
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider openai
+```
+
+它会自动做：
+
+```text
+1. 导入 sample
+2. 更新 dataset_manifest.csv/jsonl
+3. 把每个 sample 的图片发给 OpenAI
+4. 生成 grape disease label proposal
+5. 写回 manifest 里的 label / confidence / source
+6. 生成 embedding
+7. 生成 augmentation
+8. 导出 Label Studio task JSON
+9. 写 run_summary.json
+```
+
+生成文件位置：
+
+```text
+gophereye_data_workspace/simple_test/
+  dataset_manifest.csv
+  dataset_manifest.jsonl
+  runs/
+    dagent_<run_id>/
+      run_summary.json
+      artifacts/
+        labels/
+        embeddings/
+        augmented/
+        label_studio_tasks.json
+```
+
+## 6. Claude 参与的一键流程
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider anthropic
+```
+
+输出结构和 OpenAI 一样，只是 label proposal 来源会是 Anthropic/Claude。
+
+## 7. 只跑 labeling
+
+先确保已经跑过 `import-samples`。
+
+OpenAI:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+python -m gophereye_data_agent label \
+  --provider openai \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3
+```
+
+Claude:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+python -m gophereye_data_agent label \
+  --provider anthropic \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3
+```
+
+没有 API key 时，可以用本地 heuristic 跑通流程：
 
 ```bash
 python -m gophereye_data_agent label \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2
+  --provider heuristic \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3
 ```
 
-OpenAI planner 生成计划：
+labeling 生成：
 
-```bash
-export OPENAI_API_KEY="你的 OpenAI key"
-
-python -m gophereye_data_agent plan \
-  "label pending grape disease" \
-  --planner openai \
-  --model gpt-5-mini
+```text
+runs/dagent_<run_id>/artifacts/labels/*.grape_label_proposal.json
 ```
 
-当前 `label` 是 proposal，不是 ground truth。人审之前不要把它当最终标签。
+并会更新：
 
-## 7. Segmentation
-
-### YOLO segmentation
-
-首次运行可能下载 `yolo11n-seg.pt`，建议先用一两个样本测试：
-
-```bash
-python -m gophereye_data_agent segment \
-  --backend yolo \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 1
+```text
+dataset_manifest.csv
+dataset_manifest.jsonl
 ```
 
-如果你已经有本地 YOLO segmentation 模型：
+注意：这些 label 是 proposal，不是 ground truth。
+
+## 8. YOLO segmentation
+
+你之后训练好的 YOLO segmentation model 放这里：
+
+```text
+mode/yolo_grape.pt
+```
+
+然后跑：
 
 ```bash
 python -m gophereye_data_agent segment \
   --backend yolo \
-  --model /path/to/yolo11n-seg.pt \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
+  --model mode/yolo_grape.pt \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
   --max-items 1
 ```
 
-输出会在 job artifact 里生成 mask、overlay 和 `segmentation_manifest.json`。
+如果 `mode/yolo_grape.pt` 不存在，命令会直接返回 `not_available`，不会下载默认 YOLO 模型。
 
-### SAM2 segmentation
+segmentation 生成：
 
-使用 Hugging Face pretrained，首次运行可能下载较大模型：
+```text
+runs/dagent_<run_id>/artifacts/segmentation/
+  segmentation_manifest.json
+  masks/
+  overlays/
+```
+
+## 9. SAM2 segmentation
+
+如果 SAM2 环境可用，可以跑：
 
 ```bash
 python -m gophereye_data_agent segment \
   --backend sam2 \
   --pretrained facebook/sam2-hiera-large \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
   --max-items 1
 ```
 
-使用本地 checkpoint：
+或者用本地 checkpoint：
 
 ```bash
 python -m gophereye_data_agent segment \
   --backend sam2 \
   --model-cfg configs/sam2.1/sam2.1_hiera_l.yaml \
   --checkpoint /path/to/sam2.1_hiera_large.pt \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
   --max-items 1
 ```
 
-## 8. Embedding
+SAM2 输出：
 
-默认使用本地 color histogram embedding：
-
-```bash
-python -m gophereye_data_agent embed \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2
+```text
+runs/dagent_<run_id>/artifacts/segmentation_sam2/
+  segmentation_manifest.json
+  masks/
 ```
 
-同时写入 LanceDB vector index：
+## 10. Embedding
 
 ```bash
 python -m gophereye_data_agent embed \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2 \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
   --persist-vector-index
 ```
 
-Embedding 的用途：
+生成：
 
-- 查找相似叶片图片
-- 查找重复图片
-- 自动分组
-- 做 active learning 选样
-- 后续接 FiftyOne / LanceDB 相似检索
+```text
+runs/dagent_<run_id>/artifacts/embeddings/embeddings.json
+runs/dagent_<run_id>/artifacts/lancedb/
+```
 
-## 9. Augmentation
+当前 MVP 的 embedding 是本地 color histogram。它主要用于：
+
+- 找相似叶片图
+- 找重复或近重复图片
+- 后续做自动分组
+- 后续 active learning 选样
+
+如果你现在觉得 embedding 暂时不需要，一键流程可以关掉：
+
+```bash
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider openai \
+  --no-embed
+```
+
+## 11. Augmentation
 
 ```bash
 python -m gophereye_data_agent augment \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2 \
-  --count-per-image 3
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --count-per-image 1
 ```
 
-如果 Albumentations 可用，会使用 Albumentations；否则 fallback 到 PIL 简单增强。
+生成：
 
-## 10. Label Studio Export
+```text
+runs/dagent_<run_id>/artifacts/augmented/
+  augmentation_manifest.json
+  *_aug_0.jpg
+```
 
-导出 Label Studio task JSON：
+如果 Albumentations 可用，会用 Albumentations；否则用 PIL fallback。
+
+## 12. Label Studio export
 
 ```bash
 python -m gophereye_data_agent export-label-studio \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3
 ```
 
-输出文件在：
+生成：
 
 ```text
-gophereye_data_workspace/pair_test/jobs/<job_id>/artifacts/label_studio_tasks.json
+runs/dagent_<run_id>/artifacts/label_studio_tasks.json
 ```
 
-当前实现是导出 task JSON。自动创建 Label Studio project、上传 task、同步 annotation 需要下一步继续补 adapter。
+当前是导出 task JSON，不是自动启动 Label Studio UI。
 
-## 11. MLflow
+## 13. 修改 manifest 字段
 
-确认 MLflow server 已启动，并设置：
+dry-run，不真正写：
 
 ```bash
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+python -m gophereye_data_agent modify /batch_id simple_test \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3
 ```
 
-执行并记录 artifacts：
+真正写：
 
 ```bash
-python -m gophereye_data_agent run \
-  "label pending grape disease and mlflow" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
-```
-
-这一步会：
-
-- 生成 grape disease label proposals
-- 把整个 job folder 记录到 MLflow experiment `gophereye_data_agent`
-
-## 12. DVC
-
-dry-run：
-
-```bash
-python -m gophereye_data_agent run \
-  "dvc" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
-```
-
-真正执行 `dvc add`：
-
-```bash
-python -m gophereye_data_agent run \
-  "dvc" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
+python -m gophereye_data_agent modify /batch_id simple_test \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
   --apply
 ```
 
-注意：`--apply` 会调用 DVC 写 `.dvc` 文件。
-
-## 13. lakeFS
-
-当前命令：
+Git Bash 如果把 `/batch_id` 当路径转换，就用：
 
 ```bash
-python -m gophereye_data_agent run \
-  "lakefs" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
+MSYS_NO_PATHCONV=1 python -m gophereye_data_agent modify /batch_id simple_test \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --apply
 ```
 
-当前状态：
+这会更新：
 
-- 如果 `lakefs` Python client 可 import，会返回 `skipped`
-- 它会提示需要 `repo`、`branch`、`path`
-- 真正写入 lakeFS repository 的逻辑还需要下一步补充
+```text
+dataset_manifest.csv
+dataset_manifest.jsonl
+```
 
-## 14. FiftyOne
+并生成一次 run summary。
 
-创建 FiftyOne dataset，不启动 UI：
+## 14. 查看结果
+
+查看总表：
 
 ```bash
-python -m gophereye_data_agent run \
-  "open fiftyone all limit 2" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
+head -5 gophereye_data_workspace/simple_test/dataset_manifest.csv
 ```
 
-如果要打开 FiftyOne UI，需要根据 job result 里的 `dataset_name` 启动：
+查看最新 run：
 
 ```bash
-python - <<'PY'
-import fiftyone as fo
-dataset_name = "把 job_result.json 里的 dataset_name 填到这里"
-ds = fo.load_dataset(dataset_name)
-session = fo.launch_app(ds)
-session.wait()
-PY
-```
-
-## 15. Hugging Face Hub
-
-当前自然语言命令会因为缺少 `repo_id` 而跳过：
-
-```bash
-python -m gophereye_data_agent run \
-  "hugging face" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
-```
-
-真正上传需要下一步给 CLI 增加 `--repo-id`，或者手动创建 operation plan 并填入：
-
-```json
-{
-  "operation_type": "sync_hf_hub",
-  "params": {
-    "repo_id": "your-name/your-dataset",
-    "repo_type": "dataset"
-  }
-}
-```
-
-## 16. MCP Server
-
-启动 MCP server：
-
-```bash
-python -m gophereye_data_agent mcp-server
-```
-
-这是长运行进程。当前暴露：
-
-- `create_operation_plan`
-- `gophereye-data-agent://schema/operation-plan`
-
-停止用 `Ctrl+C`。
-
-## 17. OpenAI Agents SDK
-
-当前 adapter 可创建一个 Agent manager：
-
-```bash
-python - <<'PY'
-from gophereye_data_agent.agents_runtime import build_agents_sdk_manager
-agent = build_agents_sdk_manager()
-print(agent.name)
-PY
-```
-
-目前主 CLI 仍以 `plan/run/apply` 为主；Agents SDK 的多工具 orchestrator 是下一步可以继续扩展的部分。
-
-## 18. 查看结果
-
-查看最近 job：
-
-```bash
-ls -lt "$JOBS" | head
-```
-
-查看某个 job：
-
-```bash
-JOB="$JOBS/<job_id>"
-cat "$JOB/job_result.json"
-cat "$JOB/operation_plan.json"
-cat "$JOB/resolved_targets.json"
+ls -lt gophereye_data_workspace/simple_test/runs | head
 ```
 
 查看 artifacts：
 
 ```bash
-find "$JOBS" -path '*artifacts*' -type f | head -50
+find gophereye_data_workspace/simple_test/runs -path '*artifacts*' -type f | head -80
 ```
 
-## 19. 用 images/1 和 images/2 一次性测试命令
-
-从零测试：
+查看某次 run summary：
 
 ```bash
-cd ~/OneDrive/文档/GitHub/GopherEye-agent
-source .venv/Scripts/activate
-export PYTHONUTF8=1
-export PYTHONIOENCODING=utf-8
-
-WORKSPACE=gophereye_data_workspace/pair_test
-JOBS=gophereye_data_workspace/pair_test/jobs
-
-python -m gophereye_data_agent doctor
-
-python -m gophereye_data_agent import-pairs images \
-  --pair-ids 1,2 \
-  --workspace-root "$WORKSPACE"
-
-python -m gophereye_data_agent modify /corrections/batch_id pair_test \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --apply
-
-python -m gophereye_data_agent label \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2
-
-python -m gophereye_data_agent embed \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2 \
-  --persist-vector-index
-
-python -m gophereye_data_agent augment \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2 \
-  --count-per-image 1
-
-python -m gophereye_data_agent export-label-studio \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 2
+cat gophereye_data_workspace/simple_test/runs/<dagent_run_id>/run_summary.json
 ```
 
-可选重模型测试：
+## 15. 推荐测试命令组合
+
+本地无 API key，只测试系统能跑通：
+
+```bash
+python -m gophereye_data_agent import-samples images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider heuristic \
+  --no-embed \
+  --no-augment \
+  --no-export-label-studio
+```
+
+OpenAI 真正参与：
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider openai
+```
+
+Claude 真正参与：
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+python -m gophereye_data_agent auto images \
+  --sample-ids 1,2,1b \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 3 \
+  --label-provider anthropic
+```
+
+YOLO 本地模型测试：
 
 ```bash
 python -m gophereye_data_agent segment \
   --backend yolo \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
-  --max-items 1
-
-python -m gophereye_data_agent segment \
-  --backend sam2 \
-  --pretrained facebook/sam2-hiera-large \
-  --source pending_reviews \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS" \
+  --model mode/yolo_grape.pt \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
   --max-items 1
 ```
-
-可选 MLflow 测试：
-
-```bash
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-
-python -m gophereye_data_agent run \
-  "label pending grape disease and mlflow" \
-  --workspace-root "$WORKSPACE" \
-  --job-root "$JOBS"
-```
-
-## 20. 本次 images/1,2 已验证结果
-
-我已经用 `images/1` 和 `images/2` 跑过这些功能：
-
-```text
-import-pairs: imported 2 pairs
-modify: 2 patch actions applied
-label: Created 2 label proposals
-embed: Created 4 embeddings
-augment: Created 4 augmented images
-export-label-studio: Exported 4 Label Studio tasks
-MLflow: Logged job to experiment gophereye_data_agent
-DVC dry-run: would run dvc add ...
-lakeFS: adapter available, requires repo/branch/path before real commit
-```
-
-YOLO 和 SAM2 本地没有检测到已下载的模型/checkpoint，所以没有在本文档生成时强行跑重模型下载。建议你先用 `--max-items 1` 测试。

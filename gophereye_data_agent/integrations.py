@@ -34,6 +34,9 @@ def export_label_studio(
                     "data": {"image": str(image_path)},
                     "meta": {
                         "instance_id": target.instance_id,
+                        "sample_id": target.manifest.get("sample_id") or target.manifest.get("pair_id"),
+                        "sample_type": target.manifest.get("sample_type"),
+                        "image_count": target.manifest.get("image_count"),
                         "model_diagnosis": target.model_label.get("model_diagnosis"),
                         "evidence_status": target.model_label.get("evidence_status"),
                     },
@@ -84,6 +87,9 @@ def open_fiftyone(
                 fo.Sample(
                     filepath=str(image_path),
                     instance_id=target.instance_id,
+                    sample_id=target.manifest.get("sample_id") or target.manifest.get("pair_id"),
+                    sample_type=target.manifest.get("sample_type"),
+                    image_count=target.manifest.get("image_count"),
                     evidence_status=target.model_label.get("evidence_status"),
                     model_label=json.dumps(target.model_label.get("model_diagnosis"), ensure_ascii=False),
                 )

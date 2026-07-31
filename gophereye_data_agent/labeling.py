@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
 from pathlib import Path
 from typing import Any
@@ -11,6 +13,7 @@ from src.gophereye_runtime.utils import now_utc, parse_json_object, stable_id, w
 
 from .schemas import InstanceTarget, OperationResult
 from .storage import artifact_ref
+from .targets import local_image_paths
 
 
 DEFAULT_GRAPE_LABELS = ["powdery_mildew", "downy_mildew", "healthy", "unknown", "not_leaf"]
@@ -30,6 +33,52 @@ class GrapeDiseaseLabelProposal(BaseModel):
     source: dict[str, Any] = Field(default_factory=dict)
     review_status: str = "unreviewed"
     is_ground_truth: bool = False
+
+
+LABEL_SYSTEM_PROMPT = """You are the GopherEye Data Agent grape disease labeler.
+
+Inspect the provided grape leaf image sample and return a label proposal only.
+The sample may contain one image, a front/back pair, or more related images of the same leaf/sample.
+Allowed disease labels are: powdery_mildew, downy_mildew, healthy, unknown, not_leaf.
+
+Rules:
+- This is not ground truth.
+- Use unknown when image evidence is insufficient.
+- Prefer conservative evidence-based labels.
+- Evidence should mention visible image cues, not hidden assumptions.
+"""
+
+
+def require_ascii_api_key(env_name: str) -> str:
+    key = os.getenv(env_name) or ""
+    if not key:
+        raise RuntimeError(f"{env_name} is not set.")
+    try:
+        key.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise RuntimeError(f"{env_name} must be an ASCII API key. It looks like a placeholder or non-ASCII text.") from exc
+    return key
+
+
+def path_to_data_url(path: Path) -> str:
+    mime_type, _ = mimetypes.guess_type(str(path))
+    mime_type = mime_type or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def path_to_anthropic_image_block(path: Path) -> dict[str, Any]:
+    data_url = path_to_data_url(path)
+    header, data = data_url.split(",", 1)
+    media_type = header.removeprefix("data:").split(";", 1)[0]
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": data,
+        },
+    }
 
 
 def heuristic_label(target: InstanceTarget, allowed_labels: list[str]) -> GrapeDiseaseLabelProposal:
@@ -72,26 +121,51 @@ def heuristic_label(target: InstanceTarget, allowed_labels: list[str]) -> GrapeD
     )
 
 
-def openai_label(target: InstanceTarget, allowed_labels: list[str], *, model: str) -> GrapeDiseaseLabelProposal:
+def label_prompt_payload(target: InstanceTarget, allowed_labels: list[str], image_paths: list[Path]) -> dict[str, Any]:
+    return {
+        "instance_id": target.instance_id,
+        "allowed_labels": allowed_labels,
+        "manifest_row": target.manifest,
+        "image_paths": [str(path) for path in image_paths],
+        "instructions": "Return one grape disease label proposal for this image sample.",
+    }
+
+
+def finalize_proposal(proposal: GrapeDiseaseLabelProposal, target: InstanceTarget, allowed_labels: list[str], provider: str) -> GrapeDiseaseLabelProposal:
+    proposal.instance_id = target.instance_id
+    proposal.created_at = proposal.created_at or now_utc()
+    if proposal.disease not in allowed_labels:
+        proposal.disease = "unknown"
+    proposal.is_ground_truth = False
+    proposal.review_status = "unreviewed"
+    proposal.source = {**proposal.source, "provider": provider}
+    return proposal
+
+
+def openai_label(
+    target: InstanceTarget,
+    allowed_labels: list[str],
+    *,
+    model: str,
+    image_paths: list[Path],
+) -> GrapeDiseaseLabelProposal:
     from openai import OpenAI
 
     schema = GrapeDiseaseLabelProposal.model_json_schema()
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or None)
-    prompt = {
-        "instance_id": target.instance_id,
-        "allowed_labels": allowed_labels,
-        "model_label": target.model_label,
-        "review": target.review,
-        "image_links": target.image_links,
-    }
+    client = OpenAI(api_key=require_ascii_api_key("OPENAI_API_KEY"))
+    content: list[dict[str, Any]] = [
+        {"type": "input_text", "text": json.dumps(label_prompt_payload(target, allowed_labels, image_paths), ensure_ascii=False)}
+    ]
+    for image_path in image_paths:
+        content.append({"type": "input_image", "image_url": path_to_data_url(image_path)})
     response = client.responses.create(
         model=model,
         input=[
             {
                 "role": "system",
-                "content": "Return a grape disease label proposal only. It is not ground truth.",
+                "content": LABEL_SYSTEM_PROMPT,
             },
-            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            {"role": "user", "content": content},
         ],
         text={
             "format": {
@@ -105,11 +179,50 @@ def openai_label(target: InstanceTarget, allowed_labels: list[str], *, model: st
     raw = getattr(response, "output_text", "") or ""
     parsed = parse_json_object(raw) or json.loads(raw)
     proposal = GrapeDiseaseLabelProposal.model_validate(parsed)
-    if proposal.disease not in allowed_labels:
-        proposal.disease = "unknown"
-    proposal.is_ground_truth = False
-    proposal.review_status = "unreviewed"
-    return proposal
+    return finalize_proposal(proposal, target, allowed_labels, provider="openai")
+
+
+def anthropic_label(
+    target: InstanceTarget,
+    allowed_labels: list[str],
+    *,
+    model: str,
+    image_paths: list[Path],
+) -> GrapeDiseaseLabelProposal:
+    from anthropic import Anthropic
+
+    client = Anthropic(api_key=require_ascii_api_key("ANTHROPIC_API_KEY"))
+    schema = GrapeDiseaseLabelProposal.model_json_schema()
+    content: list[dict[str, Any]] = []
+    for idx, image_path in enumerate(image_paths, start=1):
+        content.append({"type": "text", "text": f"Image {idx}: {image_path.name}"})
+        content.append(path_to_anthropic_image_block(image_path))
+    content.append(
+        {
+            "type": "text",
+            "text": LABEL_SYSTEM_PROMPT
+            + "\n\nInput JSON:\n"
+            + json.dumps(label_prompt_payload(target, allowed_labels, image_paths), ensure_ascii=False),
+        }
+    )
+    message = client.messages.create(
+        model=model,
+        max_tokens=1600,
+        tools=[
+            {
+                "name": "submit_grape_disease_label_proposal",
+                "description": "Submit the image-based grape disease label proposal.",
+                "input_schema": schema,
+            }
+        ],
+        tool_choice={"type": "tool", "name": "submit_grape_disease_label_proposal"},
+        messages=[{"role": "user", "content": content}],
+    )
+    for block in message.content:
+        if getattr(block, "type", None) == "tool_use":
+            proposal = GrapeDiseaseLabelProposal.model_validate(getattr(block, "input"))
+            return finalize_proposal(proposal, target, allowed_labels, provider="anthropic")
+    raise RuntimeError("Anthropic labeler did not return a tool call.")
 
 
 def run_labeling(
@@ -117,10 +230,11 @@ def run_labeling(
     *,
     job_dir: Path,
     params: dict[str, Any],
+    workspace_root: Path,
 ) -> OperationResult:
     allowed_labels = params.get("allowed_labels") or DEFAULT_GRAPE_LABELS
     provider = params.get("provider") or "heuristic"
-    model = params.get("model") or "gpt-5-mini"
+    model = params.get("model") or ("claude-sonnet-4-5" if provider == "anthropic" else "gpt-5-mini")
     out_dir = job_dir / "artifacts" / "labels"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -129,8 +243,11 @@ def run_labeling(
     proposals: list[dict[str, Any]] = []
     for target in targets:
         try:
+            image_paths = local_image_paths(target, workspace_root=workspace_root)
             if provider == "openai":
-                proposal = openai_label(target, allowed_labels, model=model)
+                proposal = openai_label(target, allowed_labels, model=model, image_paths=image_paths)
+            elif provider in {"anthropic", "claude"}:
+                proposal = anthropic_label(target, allowed_labels, model=model, image_paths=image_paths)
             else:
                 proposal = heuristic_label(target, allowed_labels)
             path = out_dir / f"{target.instance_id}.grape_label_proposal.json"
