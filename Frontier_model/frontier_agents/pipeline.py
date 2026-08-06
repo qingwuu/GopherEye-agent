@@ -38,6 +38,77 @@ CORE_SYSTEM_CONTEXT_BY_TASK = {
     ],
 }
 
+AUTO_SELECTED_PAGE_CEILING = 12
+AUTO_SELECTED_PAGE_BASE_BY_TASK = {
+    "general_project_chat": 3,
+    "data_management": 4,
+    "knowledge_management": 5,
+    "grape_leaf_chat": 4,
+    "visual_intake_or_diagnosis": 6,
+}
+COMPLEXITY_CUES = [
+    "compare",
+    "difference",
+    "differentiate",
+    "diagnose",
+    "diagnosis",
+    "differential",
+    "workflow",
+    "pipeline",
+    "plan",
+    "strategy",
+    "evaluate",
+    "tradeoff",
+    "trade-off",
+    "treatment",
+    "management",
+    "source",
+    "schema",
+    "memory",
+    "why",
+    "how",
+    "what should",
+    "all",
+    "multiple",
+    "complex",
+    "比较",
+    "区别",
+    "诊断",
+    "鉴别",
+    "流程",
+    "方案",
+    "计划",
+    "评估",
+    "权衡",
+    "治疗",
+    "管理",
+    "来源",
+    "证据",
+    "为什么",
+    "怎么",
+    "如何",
+    "全部",
+    "多个",
+    "复杂",
+]
+RETRIEVAL_QUERY_HINTS = [
+    (["白粉病", "白粉"], "powdery mildew"),
+    (["霜霉病", "霜霉"], "downy mildew"),
+    (["健康", "正常"], "healthy normal variation"),
+    (["其他病", "未知", "无法确定", "不确定"], "other unresolved conditions differential"),
+    (["治疗", "管理", "用药", "防治"], "treatment management source policy"),
+    (["诊断", "鉴别", "判断"], "diagnosis differential evidence thresholds"),
+    (["图片", "照片", "图像", "叶面", "正面", "背面"], "image evidence leaf surface"),
+    (["术语", "词汇"], "terminology controlled vocabulary"),
+    (["结构", "解剖", "叶片"], "grape leaf anatomy"),
+    (["数据", "数据集"], "data dataset memory"),
+    (["标注", "标签"], "label labeling annotation"),
+    (["流程", "pipeline"], "workflow pipeline"),
+    (["schema", "模式"], "schema layer envelope"),
+    (["wiki", "知识库"], "wiki knowledge base"),
+    (["agent", "代理"], "agent system"),
+]
+
 from src.single_model_wiki.core import (
     DEFAULT_CATALOG_DIR,
     DEFAULT_WIKI_DIR,
@@ -94,8 +165,16 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         "metadata",
         "index",
         "review queue",
+        "数据",
+        "数据集",
+        "采集",
+        "导入",
+        "标注",
+        "标签",
+        "审核",
+        "训练数据",
     ]
-    wiki_keywords = ["wiki", "source"]
+    wiki_keywords = ["wiki", "source", "知识库", "来源", "资料", "文献", "参考"]
     grape_keywords = [
         "grape",
         "leaf",
@@ -103,6 +182,13 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         "downy",
         "disease",
         "diagnosis",
+        "葡萄",
+        "叶片",
+        "叶子",
+        "白粉",
+        "霜霉",
+        "病害",
+        "症状",
     ]
 
     wiki_keywords.extend(
@@ -175,16 +261,112 @@ def core_context_paths_for_route(route: Dict[str, Any], context_label: str) -> L
     return []
 
 
+def expand_query_for_retrieval(query: str) -> str:
+    lower = query.lower()
+    hints: List[str] = []
+    for needles, hint in RETRIEVAL_QUERY_HINTS:
+        if any(needle in lower for needle in needles) and hint not in hints:
+            hints.append(hint)
+    if not hints:
+        return query
+    return f"{query}\nRetrieval hints: {', '.join(hints)}"
+
+
+def query_size_units(query: str) -> int:
+    english_tokens = re.findall(r"[A-Za-z0-9_]+", query)
+    cjk_chars = re.findall(r"[\u3400-\u9fff]", query)
+    cjk_units = max(1, len(cjk_chars) // 2) if cjk_chars else 0
+    return len(english_tokens) + cjk_units
+
+
+def count_complexity_cues(query: str) -> int:
+    lower = query.lower()
+    count = 0
+    for cue in COMPLEXITY_CUES:
+        if re.search(r"[A-Za-z0-9]", cue):
+            pattern = rf"(?<![A-Za-z0-9_]){re.escape(cue)}(?![A-Za-z0-9_])"
+            if re.search(pattern, lower):
+                count += 1
+        elif cue in lower:
+            count += 1
+    return count
+
+
+def infer_auto_selected_page_limit(
+    *,
+    query: str,
+    route: Dict[str, Any] | None,
+    catalog: Dict[str, Any],
+    core_ids: Sequence[str],
+) -> int:
+    page_count = len(catalog.get("pages", []))
+    if page_count <= 0:
+        return 0
+
+    task_type = str((route or {}).get("task_type") or "")
+    limit = AUTO_SELECTED_PAGE_BASE_BY_TASK.get(task_type, 4)
+
+    size_units = query_size_units(query)
+    if size_units >= 18:
+        limit += 1
+    if size_units >= 36:
+        limit += 1
+    if size_units >= 70:
+        limit += 2
+
+    cue_count = count_complexity_cues(query)
+    if cue_count:
+        limit += min(3, cue_count)
+
+    if re.search(r"[?？].*[?？]", query) or re.search(r"[,;；，、]\s*\S+", query):
+        limit += 1
+    if re.search(r"\b(vs|versus|and|or)\b", query.lower()):
+        limit += 1
+
+    # Auto mode keeps mandatory core context from crowding out pages selected
+    # specifically for the current question.
+    if core_ids:
+        extra_slots = 1 if cue_count or size_units >= 12 else 0
+        limit = max(limit, len(core_ids) + extra_slots)
+
+    ceiling = min(page_count, AUTO_SELECTED_PAGE_CEILING)
+    return max(0, min(limit, ceiling))
+
+
+def resolve_selected_page_limit(
+    *,
+    requested_max_selected_files: int | None,
+    query: str,
+    route: Dict[str, Any] | None,
+    catalog: Dict[str, Any],
+    core_ids: Sequence[str],
+) -> tuple[int, str]:
+    page_count = len(catalog.get("pages", []))
+    if requested_max_selected_files is not None:
+        return max(0, min(requested_max_selected_files, page_count)), "manual"
+    return (
+        infer_auto_selected_page_limit(
+            query=query,
+            route=route,
+            catalog=catalog,
+            core_ids=core_ids,
+        ),
+        "auto",
+    )
+
+
 def select_pages_for_backend(
     *,
     query: str,
     backend: Any,
     selection_mode: str,
-    max_selected_files: int,
+    max_selected_files: int | None,
     max_page_chars: int,
     wiki_dir: Path,
     catalog_dir: Path,
+    route: Dict[str, Any] | None = None,
     core_paths: Sequence[str] = (),
+    selection_debug: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     catalog = load_or_build_catalog(wiki_dir=wiki_dir, catalog_dir=catalog_dir)
     ids_by_path = {page["path"]: page["id"] for page in catalog.get("pages", [])}
@@ -194,24 +376,54 @@ def select_pages_for_backend(
         if page_id and page_id not in core_ids:
             core_ids.append(page_id)
 
+    selection_query = expand_query_for_retrieval(query)
+    selected_page_limit, selected_page_limit_source = resolve_selected_page_limit(
+        requested_max_selected_files=max_selected_files,
+        query=query,
+        route=route,
+        catalog=catalog,
+        core_ids=core_ids,
+    )
+
     if selection_mode == "none":
+        if selection_debug is not None:
+            selection_debug.update(
+                {
+                    "selected_page_limit": 0,
+                    "selected_page_limit_source": "none",
+                    "catalog_pages": len(catalog.get("pages", [])),
+                    "core_page_count": len(core_ids),
+                    "retrieval_hints_added": selection_query != query,
+                }
+            )
         return []
     elif selection_mode == "full":
+        if selection_debug is not None:
+            selection_debug.update(
+                {
+                    "selected_page_limit": len(catalog.get("pages", [])),
+                    "selected_page_limit_source": "full",
+                    "catalog_pages": len(catalog.get("pages", [])),
+                    "core_page_count": len(core_ids),
+                    "retrieval_hints_added": selection_query != query,
+                }
+            )
         return read_all_pages(catalog=catalog, wiki_dir=wiki_dir, max_page_chars=max_page_chars)
     elif selection_mode == "keyword":
         selected_ids = select_pages_keyword_fallback(
-            query,
+            selection_query,
             catalog=catalog,
-            max_selected_files=max_selected_files,
+            max_selected_files=selected_page_limit,
         )
     elif selection_mode == "model":
         prompt = f"""You are selecting GopherEye context pages for an agent workflow.
 
 Return ONLY a JSON array of page IDs.
-Select at most {max_selected_files} IDs.
+Select the smallest sufficient set for the user request.
+This turn's page budget is {selected_page_limit} IDs. Use fewer when the question is simple.
 
 User/session query:
-{query}
+{selection_query}
 
 Context catalog:
 {render_catalog_for_prompt(catalog)}
@@ -225,16 +437,27 @@ Context catalog:
                 selected_ids.append(item)
         if not selected_ids:
             selected_ids = select_pages_keyword_fallback(
-                query,
+                selection_query,
                 catalog=catalog,
-                max_selected_files=max_selected_files,
+                max_selected_files=selected_page_limit,
             )
     else:
         raise ValueError(f"Unsupported selection_mode: {selection_mode}")
 
     selected_ids = core_ids + [page_id for page_id in selected_ids if page_id not in core_ids]
+    selected_ids = selected_ids[:selected_page_limit]
+    if selection_debug is not None:
+        selection_debug.update(
+            {
+                "selected_page_limit": selected_page_limit,
+                "selected_page_limit_source": selected_page_limit_source,
+                "catalog_pages": len(catalog.get("pages", [])),
+                "core_page_count": len(core_ids),
+                "retrieval_hints_added": selection_query != query,
+            }
+        )
     return read_pages_by_id(
-        selected_ids[:max_selected_files],
+        selected_ids,
         catalog=catalog,
         wiki_dir=wiki_dir,
         max_page_chars=max_page_chars,
@@ -396,7 +619,7 @@ def run_frontier_turn(
     config_path: str | Path | None = None,
     selection_mode: str = "keyword",
     image_refs: Sequence[str] = (),
-    max_selected_files: int = 6,
+    max_selected_files: int | None = None,
     max_page_chars: int = 12000,
     recent_turns: int = 8,
     max_output_tokens: int = 2400,
@@ -438,6 +661,7 @@ def run_frontier_turn(
     route = route_task(user_message, image_refs)
     context = context_for_route(route, wiki_dir=wiki_dir, catalog_dir=catalog_dir)
     selection_query = wiki_chat.build_selection_query(session, user_message)
+    page_selection: Dict[str, Any] = {}
     pages = select_pages_for_backend(
         query=selection_query,
         backend=backend,
@@ -446,7 +670,9 @@ def run_frontier_turn(
         max_page_chars=max_page_chars,
         wiki_dir=context["root_dir"],
         catalog_dir=context["catalog_dir"],
+        route=route,
         core_paths=core_context_paths_for_route(route, context["label"]),
+        selection_debug=page_selection,
     )
     requested_image_records = wiki_chat.collect_image_records_for_context(
         session,
@@ -530,6 +756,7 @@ def run_frontier_turn(
         "route": route,
         "context_label": context["label"],
         "selection_mode": selection_mode,
+        "page_selection": page_selection,
         "image_context": image_context,
         "max_attached_images": max_attached_images,
         "requested_image_records": requested_image_records,
@@ -570,6 +797,7 @@ def run_frontier_turn(
         "model_profile": profile.name,
         "route": route,
         "context_label": context["label"],
+        "page_selection": page_selection,
         "assistant_message": assistant_message,
         "short_term_memory": session["short_term_memory"],
         "selected_pages": turn_meta["selected_pages"],

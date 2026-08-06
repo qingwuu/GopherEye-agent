@@ -38,12 +38,48 @@ GRAPE_LABEL_CONFIG = """
   </BrushLabels>
 </View>
 """.strip()
+GRAPE_DISEASE_CHOICES = {"powdery_mildew", "downy_mildew", "healthy", "unknown", "not_leaf"}
 
 
 def path_to_data_url(path: Path) -> str:
     mime_type, _ = mimetypes.guess_type(str(path))
     mime_type = mime_type or "image/jpeg"
     return f"data:{mime_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+
+
+def is_jwt_like_token(token: str) -> bool:
+    return token.startswith("eyJ") and token.count(".") >= 2
+
+
+def parse_prediction_score(value: Any) -> float | None:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, score))
+
+
+def label_studio_predictions(target: InstanceTarget) -> list[dict[str, Any]]:
+    diagnosis = target.model_label.get("model_diagnosis") if isinstance(target.model_label.get("model_diagnosis"), dict) else {}
+    label = str(diagnosis.get("label") or target.manifest.get("label") or "").strip()
+    if label not in GRAPE_DISEASE_CHOICES:
+        return []
+
+    prediction: dict[str, Any] = {
+        "model_version": str(target.manifest.get("label_source") or "gophereye_data_agent"),
+        "result": [
+            {
+                "from_name": "disease",
+                "to_name": "image",
+                "type": "choices",
+                "value": {"choices": [label]},
+            }
+        ],
+    }
+    score = parse_prediction_score(diagnosis.get("confidence") or target.manifest.get("label_confidence"))
+    if score is not None:
+        prediction["score"] = score
+    return [prediction]
 
 
 def export_label_studio(
@@ -59,20 +95,23 @@ def export_label_studio(
         image_paths = local_image_paths(target, workspace_root=workspace_root)
         for image_path in image_paths:
             image_value = path_to_data_url(image_path) if embed_images else str(image_path)
-            tasks.append(
-                {
-                    "data": {"image": image_value},
-                    "meta": {
-                        "instance_id": target.instance_id,
-                        "sample_id": target.manifest.get("sample_id") or target.manifest.get("pair_id"),
-                        "sample_type": target.manifest.get("sample_type"),
-                        "image_count": target.manifest.get("image_count"),
-                        "source_image": str(image_path),
-                        "model_diagnosis": target.model_label.get("model_diagnosis"),
-                        "evidence_status": target.model_label.get("evidence_status"),
-                    },
-                }
-            )
+            task = {
+                "data": {"image": image_value},
+                "meta": {
+                    "instance_id": target.instance_id,
+                    "sample_id": target.manifest.get("sample_id") or target.manifest.get("pair_id"),
+                    "sample_type": target.manifest.get("sample_type"),
+                    "image_count": target.manifest.get("image_count"),
+                    "source_image": str(image_path),
+                    "model_diagnosis": target.model_label.get("model_diagnosis"),
+                    "evidence_status": target.model_label.get("evidence_status"),
+                    "segmentation_artifact": target.manifest.get("latest_segmentation_artifact"),
+                },
+            }
+            predictions = label_studio_predictions(target)
+            if predictions:
+                task["predictions"] = predictions
+            tasks.append(task)
     out_path = job_dir / "artifacts" / (params.get("output_name") or "label_studio_tasks.json")
     write_json(out_path, tasks)
     details: dict[str, Any] = {"tasks": len(tasks), "embedded_images": embed_images}
@@ -94,24 +133,48 @@ def export_label_studio(
     )
 
 
-def label_studio_request(url: str, api_key: str, path: str, payload: Any) -> Any:
+def label_studio_json_post(url: str, path: str, payload: Any, headers: dict[str, str] | None = None) -> Any:
     endpoint = url.rstrip("/") + path
     data = json.dumps(payload).encode("utf-8")
-    last_auth_error: error.HTTPError | None = None
-    for auth_scheme in ("Token", "Bearer"):
-        req = request.Request(
-            endpoint,
-            data=data,
-            headers={
-                "Authorization": f"{auth_scheme} {api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+    req = request.Request(
+        endpoint,
+        data=data,
+        headers={"Content-Type": "application/json", **(headers or {})},
+        method="POST",
+    )
+    with request.urlopen(req, timeout=30) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+    return json.loads(raw) if raw else {}
+
+
+def label_studio_refresh_access_token(url: str, refresh_token: str) -> str:
+    response = label_studio_json_post(url, "/api/token/refresh/", {"refresh": refresh_token})
+    access_token = response.get("access")
+    if not access_token:
+        raise PermissionError("Label Studio did not return an access token from /api/token/refresh/.")
+    return str(access_token)
+
+
+def label_studio_auth_headers(url: str, api_key: str) -> list[dict[str, str]]:
+    headers: list[dict[str, str]] = []
+    if is_jwt_like_token(api_key):
         try:
-            with request.urlopen(req, timeout=30) as response:
-                raw = response.read().decode("utf-8", errors="replace")
-            return json.loads(raw) if raw else {}
+            access_token = label_studio_refresh_access_token(url, api_key)
+            headers.append({"Authorization": f"Bearer {access_token}"})
+        except Exception:
+            pass
+        headers.append({"Authorization": f"Bearer {api_key}"})
+    headers.append({"Authorization": f"Token {api_key}"})
+    if not is_jwt_like_token(api_key):
+        headers.append({"Authorization": f"Bearer {api_key}"})
+    return headers
+
+
+def label_studio_request(url: str, api_key: str, path: str, payload: Any) -> Any:
+    last_auth_error: error.HTTPError | None = None
+    for headers in label_studio_auth_headers(url, api_key):
+        try:
+            return label_studio_json_post(url, path, payload, headers=headers)
         except error.HTTPError as exc:
             if exc.code in {401, 403}:
                 last_auth_error = exc
@@ -135,7 +198,7 @@ def upload_label_studio_tasks(tasks: list[dict[str, Any]], *, params: dict[str, 
             "message": "Label Studio upload skipped: set LABEL_STUDIO_API_KEY or LABEL_STUDIO_TOKEN.",
         }
     try:
-        project_id = params.get("project_id")
+        project_id = params.get("project_id") or os.getenv("LABEL_STUDIO_PROJECT_ID")
         if not project_id:
             created = label_studio_request(
                 str(url),

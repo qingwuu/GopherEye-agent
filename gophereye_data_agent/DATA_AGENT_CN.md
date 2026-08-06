@@ -110,7 +110,91 @@ manifest_csv
 manifest_jsonl
 ```
 
-## 5. OpenAI 参与的一键流程
+## 5. 真正的 language prompting 入口
+
+`ask` 是新的主入口。它会从一句话里自动解析：
+
+```text
+图片路径
+要做的操作
+YOLO 使用 local 还是 official
+是否推送到 FiftyOne / Label Studio / Roboflow
+```
+
+例子：使用单张图、官方 YOLO segmentation、最后推送到 FiftyOne：
+
+```bash
+python -m gophereye_data_agent ask \
+  "use images/1/1.jpeg, segment with official yolo, then push to fiftyone" \
+  --workspace-root gophereye_data_workspace/ask_test \
+  --job-root gophereye_data_workspace/ask_test/runs
+```
+
+例子：让 ChatGPT/OpenAI 诊断这片叶子并写回 manifest 标签：
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+python -m gophereye_data_agent ask \
+  "diagnosis this leaf images/1/1.jpeg with chatgpt" \
+  --workspace-root gophereye_data_workspace/ask_diagnosis_test \
+  --job-root gophereye_data_workspace/ask_diagnosis_test/runs
+```
+
+例子：让 Claude 诊断这片叶子并写回 manifest 标签：
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+python -m gophereye_data_agent ask \
+  "diagnose this leaf images/1/1.jpeg with claude" \
+  --workspace-root gophereye_data_workspace/ask_claude_diagnosis_test \
+  --job-root gophereye_data_workspace/ask_claude_diagnosis_test/runs
+```
+
+诊断类 language prompt 默认保持简单，只更新：
+
+```text
+dataset_manifest.csv
+dataset_manifest.jsonl
+runs/<run_id>/run_summary.json
+```
+
+不会默认生成单独 label JSON artifact。
+
+中文也可以用 rule parser 覆盖常见关键词：
+
+```bash
+python -m gophereye_data_agent ask \
+  "使用 images/1/1.jpeg，用官方 yolo 做 segmentation，然后推送到 label studio" \
+  --workspace-root gophereye_data_workspace/ask_label_studio_test \
+  --job-root gophereye_data_workspace/ask_label_studio_test/runs
+```
+
+如果推送到 Label Studio 并且想自动上传，需要先启动 Label Studio，并设置：
+
+```bash
+export LABEL_STUDIO_URL="http://127.0.0.1:8080"
+export LABEL_STUDIO_API_KEY="你的 Label Studio API key"
+```
+
+如果没有设置 API key，系统仍会自动生成：
+
+```text
+runs/<run_id>/artifacts/label_studio_tasks.json
+```
+
+Roboflow 需要这些环境变量：
+
+```bash
+export ROBOFLOW_API_KEY="你的 Roboflow key"
+export ROBOFLOW_WORKSPACE="你的 workspace"
+export ROBOFLOW_PROJECT="你的 project"
+```
+
+如果没配置，Roboflow operation 会明确返回 skipped。
+
+## 6. OpenAI 参与的一键流程
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -153,7 +237,7 @@ gophereye_data_workspace/simple_test/
         label_studio_tasks.json
 ```
 
-## 6. Claude 参与的一键流程
+## 7. Claude 参与的一键流程
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -168,7 +252,7 @@ python -m gophereye_data_agent auto images \
 
 输出结构和 OpenAI 一样，只是 label proposal 来源会是 Anthropic/Claude。
 
-## 7. 只跑 labeling
+## 8. 只跑 labeling
 
 先确保已经跑过 `import-samples`。
 
@@ -221,26 +305,56 @@ dataset_manifest.jsonl
 
 注意：这些 label 是 proposal，不是 ground truth。
 
-## 8. YOLO segmentation
+## 9. YOLO segmentation
 
-你之后训练好的 YOLO segmentation model 放这里：
+现在 YOLO segmentation 可以选择本地模型，也可以选择 Ultralytics 官方默认模型。
+
+本地模型默认位置：
 
 ```text
-mode/yolo_grape.pt
+model/yolo_grape.pt
 ```
 
-然后跑：
+使用你自己训练的本地模型：
 
 ```bash
 python -m gophereye_data_agent segment \
   --backend yolo \
-  --model mode/yolo_grape.pt \
+  --model local \
   --workspace-root gophereye_data_workspace/simple_test \
   --job-root gophereye_data_workspace/simple_test/runs \
   --max-items 1
 ```
 
-如果 `mode/yolo_grape.pt` 不存在，命令会直接返回 `not_available`，不会下载默认 YOLO 模型。
+也可以直接写路径：
+
+```bash
+python -m gophereye_data_agent segment \
+  --backend yolo \
+  --model model/yolo_grape.pt \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 1
+```
+
+使用 Ultralytics 官方默认 segmentation 模型：
+
+```bash
+python -m gophereye_data_agent segment \
+  --backend yolo \
+  --model official \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 1
+```
+
+`official` 当前对应：
+
+```text
+yolo11n-seg.pt
+```
+
+注意：官方默认模型如果本地没有缓存，Ultralytics 可能会下载权重。`local` 则只使用 `model/yolo_grape.pt`，如果文件不存在会返回 `not_available`。
 
 segmentation 生成：
 
@@ -249,39 +363,6 @@ runs/dagent_<run_id>/artifacts/segmentation/
   segmentation_manifest.json
   masks/
   overlays/
-```
-
-## 9. SAM2 segmentation
-
-如果 SAM2 环境可用，可以跑：
-
-```bash
-python -m gophereye_data_agent segment \
-  --backend sam2 \
-  --pretrained facebook/sam2-hiera-large \
-  --workspace-root gophereye_data_workspace/simple_test \
-  --job-root gophereye_data_workspace/simple_test/runs \
-  --max-items 1
-```
-
-或者用本地 checkpoint：
-
-```bash
-python -m gophereye_data_agent segment \
-  --backend sam2 \
-  --model-cfg configs/sam2.1/sam2.1_hiera_l.yaml \
-  --checkpoint /path/to/sam2.1_hiera_large.pt \
-  --workspace-root gophereye_data_workspace/simple_test \
-  --job-root gophereye_data_workspace/simple_test/runs \
-  --max-items 1
-```
-
-SAM2 输出：
-
-```text
-runs/dagent_<run_id>/artifacts/segmentation_sam2/
-  segmentation_manifest.json
-  masks/
 ```
 
 ## 10. Embedding
@@ -474,7 +555,18 @@ YOLO 本地模型测试：
 ```bash
 python -m gophereye_data_agent segment \
   --backend yolo \
-  --model mode/yolo_grape.pt \
+  --model local \
+  --workspace-root gophereye_data_workspace/simple_test \
+  --job-root gophereye_data_workspace/simple_test/runs \
+  --max-items 1
+```
+
+YOLO 官方默认模型测试：
+
+```bash
+python -m gophereye_data_agent segment \
+  --backend yolo \
+  --model official \
   --workspace-root gophereye_data_workspace/simple_test \
   --job-root gophereye_data_workspace/simple_test/runs \
   --max-items 1

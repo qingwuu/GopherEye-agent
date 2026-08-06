@@ -24,12 +24,11 @@ def execute_plan(
     job_dir: Path | None = None,
 ) -> JobResult:
     job_dir = job_dir or create_job_dir(job_root=job_root)
-    targets = resolve_targets(plan.target_selector, workspace_root=workspace_root)
 
     operation_results: list[OperationResult] = []
     for operation in plan.operations:
         selector = operation.target_selector or plan.target_selector
-        op_targets = targets if selector == plan.target_selector else resolve_targets(selector, workspace_root=workspace_root)
+        op_targets = resolve_targets(selector, workspace_root=workspace_root)
         try:
             if operation.operation_type in {OperationType.MODIFY_MANIFEST, OperationType.MODIFY_INSTANCE_JSON}:
                 result = patch_instances(
@@ -78,6 +77,7 @@ def execute_plan(
         operation_results.append(result)
         update_manifest_from_result(workspace_root, result)
 
+    targets = resolve_targets(plan.target_selector, workspace_root=workspace_root)
     status = "ok"
     blocking_statuses = {"failed", "not_available"}
     if any(result.status in blocking_statuses for result in operation_results):

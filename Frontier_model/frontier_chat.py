@@ -44,6 +44,19 @@ def _join_phrase(items: list[str]) -> str:
     return ", ".join(clean[:-1]) + f", and {clean[-1]}"
 
 
+def _auto_nonnegative_int(value: str) -> int | None:
+    text = str(value).strip().lower()
+    if text == "auto":
+        return None
+    try:
+        parsed = int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("use a nonnegative integer or 'auto'") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("use a nonnegative integer or 'auto'")
+    return parsed
+
+
 def _compact_candidates(value: object) -> list[dict]:
     candidates = []
     for item in _as_list(value):
@@ -251,6 +264,7 @@ def compact_json_result(result: dict) -> dict:
         },
         "context": {
             "selected_pages": [path for path in selected_pages if path],
+            "page_selection": result.get("page_selection"),
             "attached_images": attached_images,
             "missing_images": _text_list(result.get("missing_image_refs")),
         },
@@ -277,6 +291,12 @@ def print_result(result: dict, *, as_json: bool, json_detail: str = "compact") -
     safe_print(f"profile: {result['model_profile']}")
     safe_print(f"model: {result['model']}")
     safe_print(f"task_type: {result['route']['task_type']}")
+    page_selection = result.get("page_selection") if isinstance(result.get("page_selection"), dict) else {}
+    if page_selection.get("selected_page_limit") is not None:
+        safe_print(
+            "selected_page_limit: "
+            f"{page_selection['selected_page_limit']} ({page_selection.get('selected_page_limit_source', 'unknown')})"
+        )
     safe_print("selected_pages:")
     for page in result.get("selected_pages", []):
         safe_print(f"- {page['path']}")
@@ -299,7 +319,13 @@ def main() -> None:
     parser.add_argument("--image-ref", action="append", default=[])
     parser.add_argument("--image-context", choices=["session", "current", "none"], default="session")
     parser.add_argument("--max-attached-images", type=int, default=8)
-    parser.add_argument("--max-selected-files", type=int, default=6)
+    parser.add_argument(
+        "--max-selected-files",
+        type=_auto_nonnegative_int,
+        default=None,
+        metavar="N|auto",
+        help="Context page budget. Default auto sizes the budget from question complexity.",
+    )
     parser.add_argument("--max-page-chars", type=int, default=12000)
     parser.add_argument("--recent-turns", type=int, default=8)
     parser.add_argument("--max-output-tokens", type=int, default=2400)
