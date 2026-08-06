@@ -290,6 +290,72 @@ def parse_model_object(text: str, *, fallback: Dict[str, Any]) -> Dict[str, Any]
     return parsed if parsed is not None else fallback
 
 
+def build_json_retry_prompt(
+    *,
+    failed_stage: str,
+    original_prompt: str,
+    raw_output: str,
+) -> str:
+    return f"""The previous {failed_stage} response was not valid JSON.
+
+Return ONLY one valid JSON object. Do not include markdown fences, comments, or
+explanatory text.
+
+If no wiki update is needed, return:
+{{
+  "source_summary": "short reason",
+  "operations": [],
+  "unclear_points": []
+}}
+
+Original task prompt:
+{original_prompt}
+
+Previous invalid output:
+{raw_output or "(empty output)"}
+
+Valid JSON object now:"""
+
+
+def generate_json_object_with_retry(
+    *,
+    backend: ModelBackend,
+    prompt: str,
+    stage: str,
+    fallback: Dict[str, Any],
+    max_output_tokens: int,
+) -> tuple[Dict[str, Any], Any | None]:
+    response = backend.generate(
+        prompt,
+        max_output_tokens=max_output_tokens,
+        web_search=False,
+    )
+    parsed = parse_json_object(response.text)
+    if parsed is not None:
+        return parsed, response
+
+    retry_prompt = build_json_retry_prompt(
+        failed_stage=stage,
+        original_prompt=prompt,
+        raw_output=response.text,
+    )
+    retry_response = backend.generate(
+        retry_prompt,
+        max_output_tokens=max(max_output_tokens, 6000),
+        web_search=False,
+    )
+    retry_parsed = parse_json_object(retry_response.text)
+    if retry_parsed is not None:
+        retry_parsed["_repair_used"] = True
+        return retry_parsed, retry_response
+
+    failed = dict(fallback)
+    failed["raw_model_output"] = response.text
+    failed["repair_raw_model_output"] = retry_response.text
+    failed["_repair_used"] = True
+    return failed, retry_response
+
+
 def dedupe_dicts_by_url(items: Any) -> List[Dict[str, Any]]:
     if not isinstance(items, list):
         return []
@@ -585,7 +651,7 @@ def run_wiki_update(
     selection_mode: str = "model",
     max_selected_files: int = 8,
     max_page_chars: int = 12000,
-    max_output_tokens: int = 1800,
+    max_output_tokens: int = 6000,
     max_web_uses: int = 5,
     allow_new_pages: bool = False,
     dry_run: bool = False,
@@ -681,18 +747,15 @@ def run_wiki_update(
         pages=pages,
         allow_new_pages=allow_new_pages,
     )
-    proposal_response = backend.generate(
-        update_prompt,
+    proposal, proposal_response = generate_json_object_with_retry(
+        backend=backend,
+        prompt=update_prompt,
+        stage="wiki update proposal",
         max_output_tokens=max_output_tokens,
-        web_search=False,
-    )
-    proposal = parse_model_object(
-        proposal_response.text,
         fallback={
             "source_summary": "Model output was not valid JSON.",
             "operations": [],
             "unclear_points": ["Update proposal response could not be parsed."],
-            "raw_model_output": proposal_response.text,
         },
     )
     operations = proposal.get("operations") if isinstance(proposal.get("operations"), list) else []

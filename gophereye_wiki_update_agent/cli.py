@@ -55,7 +55,7 @@ def add_update_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--selection-mode", choices=["model", "keyword", "full"], default="model")
     parser.add_argument("--max-selected-files", type=int, default=8)
     parser.add_argument("--max-page-chars", type=int, default=12000)
-    parser.add_argument("--max-output-tokens", type=int, default=1800)
+    parser.add_argument("--max-output-tokens", type=int, default=6000)
     parser.add_argument("--max-web-uses", type=int, default=5)
     parser.add_argument("--allow-new-pages", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Save research/proposal but do not edit wiki files.")

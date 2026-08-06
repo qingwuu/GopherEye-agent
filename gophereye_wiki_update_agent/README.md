@@ -83,6 +83,11 @@ python -m gophereye_wiki_update_agent update "check current grape leaf anatomy r
   --json
 ```
 
+The default output budget is intentionally 6000 tokens because reasoning models
+can otherwise spend the whole budget before emitting the required JSON object.
+If a proposal response is still invalid JSON, the agent retries once with a
+strict JSON-only repair prompt.
+
 Smoke test without API keys:
 
 ```bash
