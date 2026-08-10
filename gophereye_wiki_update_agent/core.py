@@ -324,11 +324,16 @@ def generate_json_object_with_retry(
     stage: str,
     fallback: Dict[str, Any],
     max_output_tokens: int,
+    web_search: bool = False,
+    max_web_uses: int = 5,
+    allowed_domains: Sequence[str] = (),
 ) -> tuple[Dict[str, Any], Any | None]:
     response = backend.generate(
         prompt,
         max_output_tokens=max_output_tokens,
-        web_search=False,
+        web_search=web_search,
+        max_web_uses=max_web_uses,
+        allowed_domains=allowed_domains,
     )
     parsed = parse_json_object(response.text)
     if parsed is not None:
@@ -344,6 +349,15 @@ def generate_json_object_with_retry(
         max_output_tokens=max(max_output_tokens, 6000),
         web_search=False,
     )
+    retry_response.usage = {
+        "initial": response.usage,
+        "repair": retry_response.usage,
+    }
+    retry_response.backend_meta = {
+        "initial": response.backend_meta,
+        "repair": retry_response.backend_meta,
+        "repair_used": True,
+    }
     retry_parsed = parse_json_object(retry_response.text)
     if retry_parsed is not None:
         retry_parsed["_repair_used"] = True
@@ -669,22 +683,20 @@ def run_wiki_update(
     domains = priority_domains(priority_sources_config)
     if priority_sources_config.get("priority_sources"):
         priority_prompt = build_priority_research_prompt(query, priority_sources_config)
-        priority_response = backend.generate(
-            priority_prompt,
+        priority_research, priority_response = generate_json_object_with_retry(
+            backend=backend,
+            prompt=priority_prompt,
+            stage="priority-source research",
             max_output_tokens=max_output_tokens,
             web_search=True,
             max_web_uses=max_web_uses,
             allowed_domains=domains,
-        )
-        priority_research = parse_model_object(
-            priority_response.text,
             fallback={
                 "query": query,
                 "source_summary": "Priority-source model output was not valid JSON.",
                 "facts": [],
                 "sources": [],
                 "unclear_points": ["Priority-source research response could not be parsed."],
-                "raw_model_output": priority_response.text,
             },
         )
 
@@ -700,21 +712,19 @@ def run_wiki_update(
         },
         priority_sources_config,
     )
-    broad_response = backend.generate(
-        broad_prompt,
+    broad_research, broad_response = generate_json_object_with_retry(
+        backend=backend,
+        prompt=broad_prompt,
+        stage="broad web research",
         max_output_tokens=max_output_tokens,
         web_search=True,
         max_web_uses=max_web_uses,
-    )
-    broad_research = parse_model_object(
-        broad_response.text,
         fallback={
             "query": query,
             "source_summary": "Broad-search model output was not valid JSON.",
             "facts": [],
             "sources": [],
             "unclear_points": ["Broad-search research response could not be parsed."],
-            "raw_model_output": broad_response.text,
         },
     )
     research = combine_research(
