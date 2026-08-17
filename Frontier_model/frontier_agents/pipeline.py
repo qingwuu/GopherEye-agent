@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 from pathlib import Path
@@ -8,6 +9,14 @@ from typing import Any, Dict, List, Sequence
 from .config import DEFAULT_CONFIG_PATH, load_model_config
 from .providers import create_backend
 from . import session_runtime as wiki_chat
+
+from src.gophereye_runtime.reflection import (
+    build_reflection_record,
+    check_claim_support,
+    decide_retrieval_need,
+    extract_atomic_claims,
+    refine_with_claim_support,
+)
 
 
 FRONTIER_DIR = Path(__file__).resolve().parents[1]
@@ -30,6 +39,30 @@ CORE_WIKI_CONTEXT_BY_TASK = {
         "disease/downy_mildew/index.md",
     ],
 }
+
+VISUAL_SIGNAL_TOKENS = [
+    "necrotic",
+    "necrosis",
+    "brown",
+    "tan-to-brown",
+    "yellow",
+    "chlorotic",
+    "vein",
+    "midrib",
+    "spot",
+    "spots",
+    "lesion",
+    "lesions",
+    "cottony",
+    "powdery",
+    "oily",
+    "oil",
+    "adaxial",
+    "abaxial",
+    "upper",
+    "lower",
+    "underside",
+]
 CORE_SYSTEM_CONTEXT_BY_TASK = {
     "data_management": [
         "data/dataset_memory.md",
@@ -138,6 +171,106 @@ def parse_json_array(text: str) -> List[Any]:
     except json.JSONDecodeError:
         return []
     return value if isinstance(value, list) else []
+
+
+def _unique_strings(*groups: Any, limit: int = 12) -> List[str]:
+    out: List[str] = []
+    for group in groups:
+        if group is None:
+            continue
+        items = group if isinstance(group, list) else [group]
+        for item in items:
+            text = str(item).strip()
+            if text and text not in out:
+                out.append(text)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _supported_visual_terms(support_summary: Dict[str, Any]) -> List[str]:
+    terms: List[str] = []
+    for item in support_summary.get("claim_support", []):
+        if item.get("claim_type") != "visual_observation":
+            continue
+        if item.get("support_status") not in {"fully_supported", "partially_supported"}:
+            continue
+        if item.get("recommended_action") not in {"keep", "hedge"}:
+            continue
+        claim_text = str(item.get("claim") or "").lower()
+        for token in VISUAL_SIGNAL_TOKENS:
+            if token in claim_text and token not in terms:
+                terms.append(token)
+    return terms
+
+
+def _envelope_blob(envelope: Dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "assistant_message": envelope.get("assistant_message"),
+            "memory_update": envelope.get("memory_update"),
+        },
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+
+
+def _refinement_erases_supported_visual_evidence(
+    *,
+    refined_envelope: Dict[str, Any],
+    draft_envelope: Dict[str, Any],
+    support_summary: Dict[str, Any],
+) -> bool:
+    terms = _supported_visual_terms(support_summary)
+    if not terms:
+        return False
+    draft_blob = _envelope_blob(draft_envelope)
+    refined_blob = _envelope_blob(refined_envelope)
+    draft_hits = [term for term in terms if term in draft_blob]
+    if not draft_hits:
+        return False
+    refined_hits = [term for term in draft_hits if term in refined_blob]
+    required_hits = 1 if len(draft_hits) <= 2 else 2
+    return len(refined_hits) < required_hits
+
+
+def _preserve_supported_visual_memory(
+    *,
+    refined_memory: Dict[str, Any],
+    draft_memory: Dict[str, Any],
+    support_summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not _supported_visual_terms(support_summary):
+        return refined_memory
+    merged = copy.deepcopy(refined_memory)
+    for key in ["known_image_updates", "visual_intakes", "nonblocking_image_limitations"]:
+        if isinstance(draft_memory.get(key), list) and draft_memory.get(key):
+            merged[key] = copy.deepcopy(draft_memory[key])
+    merged["evidence_present"] = wiki_chat.semantic_evidence_list(
+        _unique_strings(
+            draft_memory.get("evidence_present"),
+            refined_memory.get("evidence_present"),
+            limit=24,
+        ),
+        max_items=12,
+    )
+    return merged
+
+
+def _soften_unresolved_leading_language(text: str) -> str:
+    lowered = str(text or "").lower()
+    if "unresolved" not in lowered and "other" not in lowered:
+        return text
+    replacements = {
+        "is the leading provisional assessment": "is the safest current classification",
+        "is the leading assessment": "is the safest current classification",
+        "is the leading diagnosis": "is the safest current classification",
+    }
+    softened = text
+    for old, new in replacements.items():
+        softened = softened.replace(old, new)
+        softened = softened.replace(old.capitalize(), new.capitalize())
+    return softened
 
 
 def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
@@ -355,6 +488,17 @@ def resolve_selected_page_limit(
     )
 
 
+def core_path_candidates(path: str) -> List[str]:
+    candidates = [path]
+    path_obj = Path(path)
+    if path_obj.suffix == ".md" and path_obj.name != "index.md":
+        split_parent = path_obj.with_suffix("") / "index.md"
+        split_text = split_parent.as_posix()
+        if split_text not in candidates:
+            candidates.append(split_text)
+    return candidates
+
+
 def select_pages_for_backend(
     *,
     query: str,
@@ -372,9 +516,11 @@ def select_pages_for_backend(
     ids_by_path = {page["path"]: page["id"] for page in catalog.get("pages", [])}
     core_ids = []
     for path in core_paths:
-        page_id = ids_by_path.get(path)
-        if page_id and page_id not in core_ids:
-            core_ids.append(page_id)
+        for candidate in core_path_candidates(path):
+            page_id = ids_by_path.get(candidate)
+            if page_id and page_id not in core_ids:
+                core_ids.append(page_id)
+                break
 
     selection_query = expand_query_for_retrieval(query)
     selected_page_limit, selected_page_limit_source = resolve_selected_page_limit(
@@ -569,6 +715,16 @@ Rules:
   structure_notes, or feature_notes; app code extracts canonical tags where useful.
 - candidate_labels should be disease names as short strings. candidate_confidence
   must be low, moderate, high, very_high, or unknown.
+- If downy mildew lacks both clear oily/angular upper-surface lesions and
+  visible abaxial cottony/downy sporulation, assign candidate_confidence "low"
+  or omit it. Do not assign moderate confidence to downy mildew based only on
+  generic brown necrotic spots or weak vein association.
+- If powdery mildew lacks visible superficial white-gray powdery colonies or
+  webby mycelium, assign candidate_confidence "low" or omit it.
+- Prefer "safest current classification" over "leading diagnosis" or
+  "leading assessment" when the label is an unresolved/other condition.
+- Do not describe a named disease as leading unless disease-specific signs are
+  visible.
 - next_image_need must be null, close_up_same_surface, opposite_surface,
   adaxial_surface, or abaxial_surface.
 - diagnosis_verdict should be confirmed, possible_not_confirmed, insufficient,
@@ -660,12 +816,21 @@ def run_frontier_turn(
 
     route = route_task(user_message, image_refs)
     context = context_for_route(route, wiki_dir=wiki_dir, catalog_dir=catalog_dir)
+    retrieval_decision = decide_retrieval_need(
+        user_message=user_message,
+        route=route,
+        memory=session.get("short_term_memory", wiki_chat.default_memory()),
+        image_refs=image_refs,
+    )
+    effective_selection_mode = selection_mode
+    if retrieval_decision.get("retrieval_decision") == "no_retrieve" and selection_mode != "none":
+        effective_selection_mode = "none"
     selection_query = wiki_chat.build_selection_query(session, user_message)
     page_selection: Dict[str, Any] = {}
     pages = select_pages_for_backend(
         query=selection_query,
         backend=backend,
-        selection_mode=selection_mode,
+        selection_mode=effective_selection_mode,
         max_selected_files=max_selected_files,
         max_page_chars=max_page_chars,
         wiki_dir=context["root_dir"],
@@ -674,6 +839,9 @@ def run_frontier_turn(
         core_paths=core_context_paths_for_route(route, context["label"]),
         selection_debug=page_selection,
     )
+    page_selection["retrieval_decision"] = retrieval_decision
+    page_selection["requested_selection_mode"] = selection_mode
+    page_selection["effective_selection_mode"] = effective_selection_mode
     requested_image_records = wiki_chat.collect_image_records_for_context(
         session,
         image_refs,
@@ -722,7 +890,139 @@ def run_frontier_turn(
         original_prompt=prompt,
         repair_callback=repair_frontier_envelope,
     )
-    assistant_message = envelope["assistant_message"]
+    draft_envelope = envelope
+    draft_final_raw = envelope["final_raw"]
+    claim_extract_response = None
+    claim_support_response = None
+    refinement_response = None
+    refined_raw = None
+    refined_envelope = None
+    final_refinement_used = False
+    claim_gate_fallback_used = False
+    support_summary: Dict[str, Any] = {
+        "claim_support": [],
+        "overall_support_status": "not_checked",
+        "needs_refinement": False,
+        "needs_human_review": False,
+        "usefulness_score": 3,
+    }
+    if envelope["envelope_valid"]:
+        extracted_claims, claim_extract_response = extract_atomic_claims(
+            backend=backend,
+            user_message=user_message,
+            assistant_message=envelope["assistant_message"],
+            memory_update=envelope["memory_update"],
+            route=route,
+            max_output_tokens=1000,
+        )
+        support_summary, claim_support_response = check_claim_support(
+            backend=backend,
+            claims=extracted_claims,
+            selected_pages=pages,
+            memory=session.get("short_term_memory", wiki_chat.default_memory()),
+            route=route,
+            assistant_message=envelope["assistant_message"],
+            draft_memory_update=envelope["memory_update"],
+            max_output_tokens=max(max_output_tokens, 3600),
+        )
+        if support_summary.get("needs_refinement"):
+            refined_raw, refinement_response = refine_with_claim_support(
+                backend=backend,
+                original_prompt=prompt,
+                draft_envelope={
+                    "assistant_message": envelope["assistant_message"],
+                    "memory_update": envelope["memory_update"],
+                },
+                support_summary=support_summary,
+                max_output_tokens=max(max_output_tokens, 3600),
+            )
+            if refined_raw:
+                refined_envelope = wiki_chat.resolve_assistant_envelope(
+                    refined_raw,
+                    role=wiki_chat.frontier_envelope_role(route["task_type"]),
+                    expected_task_type=route["task_type"],
+                    original_prompt=prompt,
+                    repair_callback=repair_frontier_envelope,
+                )
+                if refined_envelope["envelope_valid"]:
+                    if not _refinement_erases_supported_visual_evidence(
+                        refined_envelope=refined_envelope,
+                        draft_envelope=draft_envelope,
+                        support_summary=support_summary,
+                    ):
+                        refined_memory = _preserve_supported_visual_memory(
+                            refined_memory=refined_envelope["memory_update"],
+                            draft_memory=draft_envelope["memory_update"],
+                            support_summary=support_summary,
+                        )
+                        refined_envelope["memory_update"] = refined_memory
+                        if isinstance(refined_envelope.get("final_parsed"), dict):
+                            refined_envelope["final_parsed"]["memory_update"] = refined_memory
+                            refined_envelope["final_raw"] = json.dumps(
+                                refined_envelope["final_parsed"],
+                                ensure_ascii=False,
+                                indent=2,
+                            )
+                        envelope = refined_envelope
+                        final_refinement_used = True
+        blocking_claims = [
+            item for item in support_summary.get("claim_support", [])
+            if item.get("risk_level") == "high"
+            and (
+                (
+                    item.get("support_status") in {"no_support", "not_checked"}
+                    and item.get("recommended_action") in {"remove", "ask_followup", "human_review"}
+                )
+                or (
+                    item.get("support_status") == "partially_supported"
+                    and item.get("recommended_action") == "hedge"
+                )
+            )
+        ]
+        if support_summary.get("needs_refinement") and not final_refinement_used and blocking_claims:
+            fallback_memory = dict(envelope["memory_update"])
+            missing = list(fallback_memory.get("evidence_missing") or [])
+            for item in blocking_claims[:3]:
+                missing.append(f"Unsupported high-risk claim: {item.get('claim')}")
+            fallback_memory["evidence_missing"] = missing[:8]
+            open_questions = list(fallback_memory.get("open_questions") or [])
+            open_questions.append("A high-risk claim needs stronger support before it can be stated.")
+            fallback_memory["open_questions"] = open_questions[:8]
+            fallback_raw = json.dumps(
+                {
+                    "assistant_message": (
+                        "I do not have enough supported evidence to state that confidently. "
+                        "I would need stronger source or image evidence before making the high-risk claim."
+                    ),
+                    "memory_update": fallback_memory,
+                },
+                ensure_ascii=False,
+            )
+            fallback_envelope = wiki_chat.resolve_assistant_envelope(
+                fallback_raw,
+                role=wiki_chat.frontier_envelope_role(route["task_type"]),
+                expected_task_type=route["task_type"],
+                original_prompt=prompt,
+                repair_callback=None,
+            )
+            if fallback_envelope["envelope_valid"]:
+                envelope = fallback_envelope
+                claim_gate_fallback_used = True
+
+    retrieval_quality = "not_applicable"
+    if retrieval_decision.get("retrieval_decision") == "retrieve":
+        retrieval_quality = "good" if pages else "empty"
+    reflection_record = build_reflection_record(
+        retrieval_decision=retrieval_decision,
+        retrieval_quality=retrieval_quality,
+        support_summary=support_summary,
+    )
+    assistant_message = _soften_unresolved_leading_language(envelope["assistant_message"])
+    if assistant_message != envelope["assistant_message"]:
+        envelope["assistant_message"] = assistant_message
+        if isinstance(envelope.get("final_parsed"), dict):
+            envelope["final_parsed"]["assistant_message"] = assistant_message
+            envelope["final_raw"] = json.dumps(envelope["final_parsed"], ensure_ascii=False, indent=2)
     previous_memory = session.get("short_term_memory", wiki_chat.default_memory())
     memory_update = envelope["memory_update"]
     if not envelope["envelope_valid"]:
@@ -755,7 +1055,8 @@ def run_frontier_turn(
         "model_profile": profile.name,
         "route": route,
         "context_label": context["label"],
-        "selection_mode": selection_mode,
+        "selection_mode": effective_selection_mode,
+        "requested_selection_mode": selection_mode,
         "page_selection": page_selection,
         "image_context": image_context,
         "max_attached_images": max_attached_images,
@@ -768,22 +1069,36 @@ def run_frontier_turn(
             for page in pages
         ],
         "raw_model_output": raw,
+        "draft_model_output": raw,
+        "draft_final_model_output": draft_final_raw,
         "repair_model_output": envelope["attempts"][1]["raw"] if len(envelope["attempts"]) > 1 else None,
+        "refined_model_output": refined_raw,
         "final_model_output": envelope["final_raw"],
+        "draft_envelope_valid": draft_envelope["envelope_valid"],
         "parsed_json": envelope["parsed_json"],
         "envelope_valid": envelope["envelope_valid"],
         "envelope_schema": envelope["schema_profile"],
         "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
+        "final_refinement_used": final_refinement_used,
+        "claim_gate_fallback_used": claim_gate_fallback_used,
+        "claim_support": support_summary.get("claim_support", []),
+        "reflection": reflection_record,
         "envelope_attempts": [
             {key: value for key, value in attempt.items() if key != "raw"}
             for attempt in envelope["attempts"]
         ],
         "usage": model_response.usage,
         "repair_usage": repair_responses[0].usage if repair_responses else None,
+        "claim_extract_usage": getattr(claim_extract_response, "usage", None) if claim_extract_response else None,
+        "claim_support_usage": getattr(claim_support_response, "usage", None) if claim_support_response else None,
+        "refinement_usage": getattr(refinement_response, "usage", None) if refinement_response else None,
         "backend_meta": model_response.backend_meta,
         "repair_backend_meta": repair_responses[0].backend_meta if repair_responses else None,
+        "claim_extract_backend_meta": getattr(claim_extract_response, "backend_meta", None) if claim_extract_response else None,
+        "claim_support_backend_meta": getattr(claim_support_response, "backend_meta", None) if claim_support_response else None,
+        "refinement_backend_meta": getattr(refinement_response, "backend_meta", None) if refinement_response else None,
         "created_at": now_utc(),
     }
     session.setdefault("turns", []).append(turn_meta)
@@ -810,5 +1125,9 @@ def run_frontier_turn(
         "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
+        "claim_support": support_summary.get("claim_support", []),
+        "reflection": reflection_record,
+        "final_refinement_used": final_refinement_used,
+        "claim_gate_fallback_used": claim_gate_fallback_used,
         "usage": model_response.usage,
     }

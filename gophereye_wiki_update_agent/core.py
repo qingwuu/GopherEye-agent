@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 from src.gophereye_runtime.utils import now_utc, parse_json_object, safe_component, stable_id, timestamp_id
+from src.gophereye_runtime.reflection import extract_source_claims, verify_source_claims
 from src.single_model_wiki.core import (
     DEFAULT_CATALOG_DIR,
     DEFAULT_WIKI_DIR,
@@ -205,6 +206,7 @@ def build_update_prompt(
     *,
     query: str,
     research: Dict[str, Any],
+    verified_claims: Sequence[Dict[str, Any]],
     catalog: Dict[str, Any],
     pages: Sequence[Dict[str, Any]],
     allow_new_pages: bool,
@@ -230,6 +232,7 @@ Return ONLY valid JSON with this exact top-level shape:
       "path": "relative/wiki/page.md",
       "heading": "exact existing heading text without #",
       "content": "- One compact source-backed bullet with inline markdown source link.",
+      "source_claim_ids": ["source_claim_001"],
       "reason": "short reason"
     }}
   ],
@@ -242,6 +245,11 @@ Wiki update operations:
 - create_page: only if allow_new_pages is true and no existing page fits.
 
 Rules:
+- You may only propose wiki edits using verified_claims whose support_status is
+  fully_supported.
+- Do not introduce new factual claims that are not present in verified_claims.
+- Each operation must include source_claim_ids.
+- Each operation content must include an inline source URL from the cited claim.
 - Prefer append_under_heading on an existing selected page.
 - Content must be minimal: 1 to 4 bullets or one short paragraph, max 120 words
   per operation.
@@ -261,6 +269,9 @@ User request:
 
 Research summary JSON:
 {json.dumps(research, ensure_ascii=False, indent=2)}
+
+Verified source claims JSON:
+{json.dumps(list(verified_claims), ensure_ascii=False, indent=2)}
 
 Wiki catalog:
 {render_catalog_for_prompt(catalog)}
@@ -573,6 +584,107 @@ def resolve_wiki_page(wiki_dir: Path, path_text: str) -> Path:
     return path
 
 
+def operation_source_claim_ids(operation: Dict[str, Any]) -> List[str]:
+    value = operation.get("source_claim_ids") or operation.get("source_claim_id")
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def filter_operations_by_verified_claims(
+    operations: Sequence[Dict[str, Any]],
+    verified_claims: Sequence[Dict[str, Any]],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    verified_by_id = {
+        str(item.get("claim_id")): item
+        for item in verified_claims
+        if item.get("claim_id") and item.get("support_status") == "fully_supported"
+    }
+    allowed: List[Dict[str, Any]] = []
+    gate_results: List[Dict[str, Any]] = []
+    for index, operation in enumerate(operations, start=1):
+        if not isinstance(operation, dict):
+            gate_results.append(
+                {
+                    "index": index,
+                    "status": "skipped_invalid_operation",
+                    "reason": "Operation is not an object.",
+                }
+            )
+            continue
+
+        source_claim_ids = operation_source_claim_ids(operation)
+        missing_ids = [claim_id for claim_id in source_claim_ids if claim_id not in verified_by_id]
+        content = str(operation.get("content") or "")
+        claim_urls: List[str] = []
+        for claim_id in source_claim_ids:
+            claim = verified_by_id.get(claim_id) or {}
+            for value in [claim.get("source_url"), *(claim.get("evidence_refs") or [])]:
+                text = str(value or "").strip()
+                if text.startswith(("http://", "https://")) and text not in claim_urls:
+                    claim_urls.append(text)
+        has_matching_inline_url = any(url in content for url in claim_urls)
+        if not source_claim_ids:
+            gate_results.append(
+                {
+                    "index": index,
+                    "status": "skipped_missing_source_claim_ids",
+                    "path": operation.get("path"),
+                    "reason": "Wiki operations must cite verified source_claim_ids.",
+                }
+            )
+            continue
+        if missing_ids:
+            gate_results.append(
+                {
+                    "index": index,
+                    "status": "skipped_unverified_source_claim_ids",
+                    "path": operation.get("path"),
+                    "source_claim_ids": source_claim_ids,
+                    "missing_ids": missing_ids,
+                    "reason": "All source_claim_ids must be fully_supported verified claims.",
+                }
+            )
+            continue
+        if not claim_urls:
+            gate_results.append(
+                {
+                    "index": index,
+                    "status": "skipped_verified_claim_missing_source_url",
+                    "path": operation.get("path"),
+                    "source_claim_ids": source_claim_ids,
+                    "reason": "Verified source claims must carry source_url or URL evidence_refs.",
+                }
+            )
+            continue
+        if not has_matching_inline_url:
+            gate_results.append(
+                {
+                    "index": index,
+                    "status": "skipped_missing_inline_source_url",
+                    "path": operation.get("path"),
+                    "source_claim_ids": source_claim_ids,
+                    "expected_source_urls": claim_urls,
+                    "reason": "Wiki operation content must include an inline URL from a cited verified source claim.",
+                }
+            )
+            continue
+
+        clean_operation = dict(operation)
+        clean_operation["source_claim_ids"] = source_claim_ids
+        allowed.append(clean_operation)
+        gate_results.append(
+            {
+                "index": index,
+                "status": "accepted",
+                "path": operation.get("path"),
+                "source_claim_ids": source_claim_ids,
+            }
+        )
+    return allowed, gate_results
+
+
 def apply_operations(
     operations: Sequence[Dict[str, Any]],
     *,
@@ -644,11 +756,17 @@ def save_run_artifacts(
     *,
     run_dir: Path,
     research: Dict[str, Any],
+    source_claims: Sequence[Dict[str, Any]],
+    claim_support: Dict[str, Any],
+    verified_claims: Sequence[Dict[str, Any]],
     proposal: Dict[str, Any],
     result: Dict[str, Any],
 ) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     write_text(run_dir / "research.json", json.dumps(research, ensure_ascii=False, indent=2) + "\n")
+    write_text(run_dir / "claims.json", json.dumps(list(source_claims), ensure_ascii=False, indent=2) + "\n")
+    write_text(run_dir / "claim_support.json", json.dumps(claim_support, ensure_ascii=False, indent=2) + "\n")
+    write_text(run_dir / "verified_claims.json", json.dumps(list(verified_claims), ensure_ascii=False, indent=2) + "\n")
     write_text(run_dir / "proposal.json", json.dumps(proposal, ensure_ascii=False, indent=2) + "\n")
     write_text(run_dir / "run_summary.json", json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n")
 
@@ -733,9 +851,29 @@ def run_wiki_update(
         priority_research=priority_research,
         broad_research=broad_research,
     )
-    selected_ids = select_candidate_pages(
+    source_claims, source_claims_response = extract_source_claims(
+        backend=backend,
         query=query,
         research=research,
+        max_output_tokens=min(max_output_tokens, 2000),
+    )
+    claim_support, claim_support_response = verify_source_claims(
+        backend=backend,
+        query=query,
+        source_claims=source_claims,
+        research=research,
+        max_output_tokens=min(max_output_tokens, 2400),
+    )
+    verified_claims = claim_support.get("verified_claims") if isinstance(claim_support.get("verified_claims"), list) else []
+    selection_research = {
+        "query": research.get("query") or query,
+        "source_summary": research.get("source_summary") or "",
+        "verified_claims": verified_claims,
+        "unclear_points": claim_support.get("unclear_points") or research.get("unclear_points") or [],
+    }
+    selected_ids = select_candidate_pages(
+        query=query,
+        research=selection_research,
         catalog=catalog,
         backend=backend,
         selection_mode=selection_mode,
@@ -750,25 +888,41 @@ def run_wiki_update(
     )
     selected_paths = [page["path"] for page in pages]
 
-    update_prompt = build_update_prompt(
-        query=query,
-        research=research,
-        catalog=catalog,
-        pages=pages,
-        allow_new_pages=allow_new_pages,
-    )
-    proposal, proposal_response = generate_json_object_with_retry(
-        backend=backend,
-        prompt=update_prompt,
-        stage="wiki update proposal",
-        max_output_tokens=max_output_tokens,
-        fallback={
-            "source_summary": "Model output was not valid JSON.",
+    proposal_response = None
+    if verified_claims:
+        update_prompt = build_update_prompt(
+            query=query,
+            research=selection_research,
+            verified_claims=verified_claims,
+            catalog=catalog,
+            pages=pages,
+            allow_new_pages=allow_new_pages,
+        )
+        proposal, proposal_response = generate_json_object_with_retry(
+            backend=backend,
+            prompt=update_prompt,
+            stage="wiki update proposal",
+            max_output_tokens=max_output_tokens,
+            fallback={
+                "source_summary": "Model output was not valid JSON.",
+                "operations": [],
+                "unclear_points": ["Update proposal response could not be parsed."],
+            },
+        )
+    else:
+        proposal = {
+            "source_summary": research.get("source_summary") or "No fully supported source claims were verified.",
             "operations": [],
-            "unclear_points": ["Update proposal response could not be parsed."],
-        },
-    )
+            "unclear_points": (
+                claim_support.get("unclear_points")
+                or ["No fully supported source claims were verified; wiki edits were skipped."]
+            ),
+        }
     operations = proposal.get("operations") if isinstance(proposal.get("operations"), list) else []
+    operations, operation_gate_results = filter_operations_by_verified_claims(
+        operations,
+        verified_claims,
+    )
 
     applied_operations: List[Dict[str, Any]] = []
     catalog_after: Dict[str, Any] | None = None
@@ -799,8 +953,14 @@ def run_wiki_update(
             {"id": page["id"], "path": page["path"], "title": page["title"]}
             for page in pages
         ],
+        "source_claims_count": len(source_claims),
+        "verified_claims_count": len(verified_claims),
+        "source_claims": source_claims,
+        "claim_support": claim_support,
+        "verified_claims": verified_claims,
         "source_summary": proposal.get("source_summary") or research.get("source_summary"),
         "operations": operations,
+        "operation_gate_results": operation_gate_results,
         "applied_operations": applied_operations,
         "catalog_built": bool(catalog_after is not None),
         "catalog_pages": catalog_after.get("num_pages") if catalog_after else catalog.get("num_pages"),
@@ -808,13 +968,25 @@ def run_wiki_update(
         "usage": {
             "priority_research": priority_response.usage if priority_response else None,
             "broad_research": broad_response.usage,
-            "proposal": proposal_response.usage,
+            "source_claims": getattr(source_claims_response, "usage", None) if source_claims_response else None,
+            "claim_support": getattr(claim_support_response, "usage", None) if claim_support_response else None,
+            "proposal": getattr(proposal_response, "usage", None) if proposal_response else None,
         },
         "backend_meta": {
             "priority_research": priority_response.backend_meta if priority_response else None,
             "broad_research": broad_response.backend_meta,
-            "proposal": proposal_response.backend_meta,
+            "source_claims": getattr(source_claims_response, "backend_meta", None) if source_claims_response else None,
+            "claim_support": getattr(claim_support_response, "backend_meta", None) if claim_support_response else None,
+            "proposal": getattr(proposal_response, "backend_meta", None) if proposal_response else None,
         },
     }
-    save_run_artifacts(run_dir=run_dir, research=research, proposal=proposal, result=result)
+    save_run_artifacts(
+        run_dir=run_dir,
+        research=research,
+        source_claims=source_claims,
+        claim_support=claim_support,
+        verified_claims=verified_claims,
+        proposal=proposal,
+        result=result,
+    )
     return result

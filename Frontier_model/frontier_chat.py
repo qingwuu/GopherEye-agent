@@ -8,10 +8,15 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from src.gophereye_runtime.utils import safe_print
-    from Frontier_model.frontier_agents.pipeline import DEFAULT_SESSION_DIR, run_frontier_turn
+    from Frontier_model.frontier_agents.pipeline import (
+        DEFAULT_CATALOG_DIR,
+        DEFAULT_SESSION_DIR,
+        DEFAULT_WIKI_DIR,
+        run_frontier_turn,
+    )
 else:
     from src.gophereye_runtime.utils import safe_print
-    from .frontier_agents.pipeline import DEFAULT_SESSION_DIR, run_frontier_turn
+    from .frontier_agents.pipeline import DEFAULT_CATALOG_DIR, DEFAULT_SESSION_DIR, DEFAULT_WIKI_DIR, run_frontier_turn
 
 
 def _as_list(value: object) -> list:
@@ -272,8 +277,11 @@ def compact_json_result(result: dict) -> dict:
             "parsed_json": result.get("parsed_json"),
             "envelope_valid": result.get("envelope_valid"),
             "fallback_used": result.get("envelope_fallback_used"),
+            "final_refinement_used": result.get("final_refinement_used"),
+            "claim_gate_fallback_used": result.get("claim_gate_fallback_used"),
             "validation_errors": _text_list(result.get("envelope_validation_errors")),
         },
+        "reflection": result.get("reflection"),
         "usage": result.get("usage"),
     }
     return _drop_empty(compact)
@@ -330,6 +338,8 @@ def main() -> None:
     parser.add_argument("--recent-turns", type=int, default=8)
     parser.add_argument("--max-output-tokens", type=int, default=2400)
     parser.add_argument("--session-dir", default=str(DEFAULT_SESSION_DIR))
+    parser.add_argument("--wiki-dir", default=None)
+    parser.add_argument("--catalog-dir", default=None)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--json-detail", choices=["compact", "full"], default="compact")
     args = parser.parse_args()
@@ -351,6 +361,8 @@ def main() -> None:
         image_context=args.image_context,
         max_attached_images=args.max_attached_images,
         session_dir=Path(args.session_dir),
+        wiki_dir=Path(args.wiki_dir) if args.wiki_dir else DEFAULT_WIKI_DIR,
+        catalog_dir=Path(args.catalog_dir) if args.catalog_dir else DEFAULT_CATALOG_DIR,
     )
     print_result(result, as_json=args.json, json_detail=args.json_detail)
 

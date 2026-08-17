@@ -111,12 +111,18 @@ def main() -> None:
         safe_print(f"model: {result['model']}")
         safe_print(f"dry_run: {result['dry_run']}")
         safe_print(f"priority_sources_count: {result['priority_sources_count']}")
+        safe_print(f"source_claims_count: {result.get('source_claims_count', 0)}")
+        safe_print(f"verified_claims_count: {result.get('verified_claims_count', 0)}")
         safe_print("selected_pages:")
         for page in result.get("selected_pages", []):
             safe_print(f"- {page['path']}")
         safe_print("operations:")
         for operation in result.get("operations", []):
             safe_print(f"- {operation.get('type')} {operation.get('path')}")
+        if result.get("operation_gate_results"):
+            safe_print("operation_gate_results:")
+            for gate in result.get("operation_gate_results", []):
+                safe_print(f"- {gate.get('status')} {gate.get('path')}")
         if not result["dry_run"]:
             safe_print("applied_operations:")
             for operation in result.get("applied_operations", []):

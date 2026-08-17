@@ -617,6 +617,240 @@ def normalize_candidate_diseases(value: Any) -> List[Dict[str, Any]]:
     return candidates
 
 
+def _contains_any(text: str, tokens: Sequence[str]) -> bool:
+    return any(token in text for token in tokens)
+
+
+def calibrate_candidate_diseases_for_intake(intake: Dict[str, Any]) -> None:
+    candidates = intake.get("candidate_diseases")
+    if not isinstance(candidates, list) or not candidates:
+        return
+    evidence_text = json.dumps(
+        {
+            "visible_symptoms": intake.get("visible_symptoms"),
+            "visible_symptom_notes": intake.get("visible_symptom_notes"),
+            "visible_structures": intake.get("visible_structures"),
+            "visible_structure_notes": intake.get("visible_structure_notes"),
+            "fine_visual_features": intake.get("fine_visual_features"),
+            "intake_summary": intake.get("intake_summary"),
+        },
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+    downy_absent = _contains_any(
+        evidence_text,
+        [
+            "no white cottony",
+            "no cottony",
+            "no downy sporulation",
+            "no white cottony/downy",
+            "without visible downy",
+            "absence of visible cottony",
+            "not show disease-specific cottony",
+        ],
+    )
+    oily_absent = _contains_any(
+        evidence_text,
+        [
+            "no clear oily",
+            "no typical oily",
+            "no oily",
+            "no oil spot",
+            "no oil-spot",
+            "without diagnostic oil",
+        ],
+    ) or ("no " in evidence_text and _contains_any(evidence_text, ["clear oily", "oily sheen", "oil spot", "oil-spot"]))
+    downy_positive = _contains_any(
+        evidence_text,
+        [
+            "visible underside white cottony sporulation",
+            "white cottony sporulation associated",
+            "downy sporulation associated",
+            "clear oil spots",
+            "clear oily",
+            "angular vein-limited",
+            "vein-limited angular",
+        ],
+    ) and not (
+        "no " in evidence_text
+        and _contains_any(evidence_text, ["clear oily", "oily sheen", "oil spot", "cottony", "sporulation"])
+    ) and not _contains_any(
+        evidence_text,
+        [
+            "no clear oil",
+            "no clear oily",
+            "no typical oily",
+            "no white cottony",
+            "no cottony",
+            "no downy sporulation",
+            "without visible downy",
+        ],
+    )
+    powdery_absent = _contains_any(
+        evidence_text,
+        [
+            "no superficial white-gray powder",
+            "no powdery",
+            "no powdery colonies",
+            "without visible powdery",
+            "not show powdery",
+        ],
+    )
+    powdery_positive = _contains_any(
+        evidence_text,
+        [
+            "visible powdery colonies",
+            "white-gray powdery colonies",
+            "superficial white-gray powder",
+            "webby mycelium",
+        ],
+    ) and not _contains_any(
+        evidence_text,
+        [
+            "no visible powdery",
+            "no superficial white-gray powder",
+            "no powdery",
+            "without visible powdery",
+        ],
+    )
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        disease = str(candidate.get("disease") or "").strip().lower()
+        confidence = str(candidate.get("confidence") or "unknown").strip()
+        if disease == "downy mildew" and confidence in {"moderate", "high", "very_high"}:
+            if (downy_absent or oily_absent) and not downy_positive:
+                candidate["confidence"] = "low"
+                supporting = _string_list(candidate.get("supporting_evidence"), max_items=3)
+                note = "Missing clear oil spots and/or visible abaxial cottony sporulation; keep as a weak differential."
+                if note not in supporting:
+                    supporting.append(note)
+                candidate["supporting_evidence"] = supporting[:3]
+        if disease == "powdery mildew" and confidence in {"moderate", "high", "very_high"}:
+            if powdery_absent and not powdery_positive:
+                candidate["confidence"] = "low"
+                supporting = _string_list(candidate.get("supporting_evidence"), max_items=3)
+                note = "No visible superficial white-gray powdery colonies; keep as a weak differential."
+                if note not in supporting:
+                    supporting.append(note)
+                candidate["supporting_evidence"] = supporting[:3]
+
+
+def calibrate_candidate_diseases_for_memory(memory: Dict[str, Any]) -> None:
+    visual_intakes = memory.get("visual_intakes")
+    if not isinstance(visual_intakes, list) or not visual_intakes:
+        return
+
+    global_text = json.dumps(
+        {
+            "summary": memory.get("summary"),
+            "current_diagnosis": memory.get("current_diagnosis"),
+            "evidence_present": memory.get("evidence_present"),
+            "evidence_missing": memory.get("evidence_missing"),
+            "open_questions": memory.get("open_questions"),
+        },
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+    positive_text = json.dumps(
+        {
+            "summary": memory.get("summary"),
+            "current_diagnosis": memory.get("current_diagnosis"),
+            "evidence_present": memory.get("evidence_present"),
+        },
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+
+    downy_low_support = _contains_any(
+        global_text,
+        [
+            "downy mildew has low support",
+            "downy mildew low support",
+            "downy mildew is weak",
+            "weak differential",
+            "missing clear oil spots",
+            "typical oily or angular",
+            "no clear oily",
+            "no typical oily",
+            "localized abaxial cottony",
+            "no cottony",
+            "no downy sporulation",
+            "cottony/downy sporulation",
+        ],
+    )
+    downy_positive = _contains_any(
+        positive_text,
+        [
+            "visible abaxial cottony sporulation",
+            "lesion-associated cottony growth is visible",
+            "clear oily/angular upper lesions",
+            "clear oil spots",
+            "angular vein-limited upper lesions",
+            "confirmed downy mildew",
+        ],
+    ) and not _contains_any(
+        positive_text,
+        [
+            "no clear oily",
+            "no typical oily",
+            "no cottony",
+            "missing clear oil",
+            "low support",
+        ],
+    )
+
+    powdery_low_support = _contains_any(
+        global_text,
+        [
+            "powdery mildew is not supported",
+            "no superficial powdery",
+            "superficial white-gray powdery colonies",
+            "no powdery colonies",
+            "no webby mycelium",
+        ],
+    )
+    powdery_positive = _contains_any(
+        positive_text,
+        [
+            "visible superficial powdery",
+            "white-gray powdery colonies are visible",
+            "webby mycelium is visible",
+            "confirmed powdery mildew",
+        ],
+    ) and not _contains_any(positive_text, ["no superficial", "no powdery", "not supported"])
+
+    for intake in visual_intakes:
+        if not isinstance(intake, dict):
+            continue
+        calibrate_candidate_diseases_for_intake(intake)
+        candidates = intake.get("candidate_diseases")
+        if not isinstance(candidates, list):
+            continue
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            disease = str(candidate.get("disease") or "").strip().lower()
+            confidence = str(candidate.get("confidence") or "unknown").strip()
+            if disease == "downy mildew" and downy_low_support and not downy_positive:
+                if confidence in {"moderate", "high", "very_high", "unknown"}:
+                    candidate["confidence"] = "low"
+                supporting = _string_list(candidate.get("supporting_evidence"), max_items=3)
+                note = "Missing clear oil spots and/or lesion-associated abaxial cottony sporulation; keep as a weak differential."
+                if note not in supporting:
+                    supporting.append(note)
+                candidate["supporting_evidence"] = supporting[:3]
+            if disease == "powdery mildew" and powdery_low_support and not powdery_positive:
+                if confidence in {"moderate", "high", "very_high", "unknown"}:
+                    candidate["confidence"] = "low"
+                supporting = _string_list(candidate.get("supporting_evidence"), max_items=3)
+                note = "No visible superficial white-gray powdery colonies; keep as a weak differential."
+                if note not in supporting:
+                    supporting.append(note)
+                candidate["supporting_evidence"] = supporting[:3]
+
+
 def normalize_evidence_sufficiency(value: Any) -> str | None:
     if value is None:
         return None
@@ -624,6 +858,16 @@ def normalize_evidence_sufficiency(value: Any) -> str | None:
     if raw in EVIDENCE_SUFFICIENCY_VALUES:
         return raw
     text = _normalized_text(raw)
+    if any(token in text for token in ["insufficient", "not confirmed", "unconfirmed", "possible", "uncertain"]):
+        if "adaxial" in text or "upper" in text or "front" in text:
+            return "insufficient_need_adaxial"
+        if "abaxial" in text or "underside" in text or "back" in text or "lower" in text:
+            return "insufficient_need_abaxial"
+        if "opposite" in text:
+            return "insufficient_need_opposite_surface"
+        if "quality" in text or "clearer" in text or "blur" in text or "close" in text:
+            return "insufficient_need_better_quality"
+        return "uncertain"
     if "sufficient" in text and "single" in text:
         return "sufficient_single_surface"
     if "sufficient" in text and "both" in text:
@@ -638,7 +882,7 @@ def normalize_evidence_sufficiency(value: Any) -> str | None:
         return "insufficient_need_abaxial"
     if "quality" in text or "clearer" in text or "blur" in text:
         return "insufficient_need_better_quality"
-    if "insufficient" in text or "opposite" in text:
+    if "opposite" in text:
         return "insufficient_need_opposite_surface"
     return "uncertain"
 
@@ -651,6 +895,84 @@ def _string_list(value: Any, *, max_items: int = 6) -> List[str]:
         text = str(item).strip()
         if text and text not in items:
             items.append(text)
+        if len(items) >= max_items:
+            break
+    return items
+
+
+EVIDENCE_KEY_TOKENS = [
+    "opposite",
+    "same leaf",
+    "plausible",
+    "upper",
+    "adaxial",
+    "underside",
+    "abaxial",
+    "brown",
+    "tan-brown",
+    "necrotic",
+    "yellow",
+    "chlorotic",
+    "halo",
+    "vein",
+    "margin",
+    "interveinal",
+    "powdery",
+    "cottony",
+    "sporulation",
+    "oily",
+    "oil",
+    "fruiting",
+    "dark dots",
+    "close",
+    "sharp",
+    "edge",
+    "center",
+]
+
+
+def evidence_semantic_key(text: str) -> str:
+    lower = _normalized_text(text)
+    polarity = "neg" if any(token in lower for token in ["no ", "not ", "without ", "absent"]) else "pos"
+    if "opposite" in lower and "surface" in lower and "leaf" in lower:
+        return polarity + ":opposite_surfaces_same_leaf"
+    if "brown" in lower and ("halo" in lower or "yellow" in lower or "chlorotic" in lower):
+        return polarity + ":brown_yellow_halo_lesions"
+    if "lesion" in lower and any(token in lower for token in ["interveinal", "margin", "vein"]):
+        return polarity + ":lesion_distribution_margin_interveinal_vein"
+    if any(token in lower for token in ["underside", "abaxial", "below"]) and any(
+        token in lower for token in ["tan-brown", "brown", "damage", "lesion"]
+    ):
+        return polarity + ":corresponding_underside_damage"
+    if any(token in lower for token in ["powdery", "cottony", "sporulation", "oily", "oil spot"]):
+        if polarity == "neg":
+            absent_features = []
+            if "powdery" in lower:
+                absent_features.append("powdery")
+            if "cottony" in lower or "sporulation" in lower:
+                absent_features.append("cottony_sporulation")
+            if "oily" in lower or "oil spot" in lower:
+                absent_features.append("oil_spots")
+            return polarity + ":absent_" + "|".join(absent_features)
+    hits = [token for token in EVIDENCE_KEY_TOKENS if token in lower]
+    if hits:
+        return polarity + ":" + "|".join(sorted(set(hits)))
+    compact = re.sub(r"[^a-z0-9]+", " ", lower).strip()
+    return polarity + ":" + compact[:90]
+
+
+def semantic_evidence_list(value: Any, *, max_items: int = 12) -> List[str]:
+    items: List[str] = []
+    seen_keys: set[str] = set()
+    for item in _as_list(value):
+        text = str(item).strip()
+        if not text:
+            continue
+        key = evidence_semantic_key(text)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        items.append(text)
         if len(items) >= max_items:
             break
     return items
@@ -940,10 +1262,10 @@ def _derive_evidence_sufficiency(
         return "insufficient_need_abaxial"
 
     text = _normalized_text(diagnosis_verdict)
-    if any(token in text for token in ["confirmed", "sufficient", "diagnostic"]):
-        return "sufficient_single_surface"
     if any(token in text for token in ["possible", "not confirmed", "uncertain", "insufficient"]):
         return "uncertain"
+    if any(token in text for token in ["confirmed", "sufficient", "diagnostic"]):
+        return "sufficient_single_surface"
 
     has_nonblocking_limitations = any(
         isinstance(item, dict)
@@ -1090,6 +1412,22 @@ def expand_compact_memory_update(memory_update: Dict[str, Any]) -> Dict[str, Any
     return normalized
 
 
+def enforce_surface_consistency(intake: Dict[str, Any]) -> None:
+    side_assessment = intake.get("side_assessment")
+    side = (
+        normalize_side_label((side_assessment or {}).get("side_label"))
+        if isinstance(side_assessment, dict)
+        else None
+    )
+    structures = intake.get("visible_structures")
+    if not isinstance(structures, list):
+        return
+    if side == "abaxial":
+        intake["visible_structures"] = [structure for structure in structures if structure != "adaxial_surface"]
+    elif side == "adaxial":
+        intake["visible_structures"] = [structure for structure in structures if structure != "abaxial_surface"]
+
+
 def normalize_visual_intake_payload(item: Any) -> Any:
     if not isinstance(item, dict):
         return item
@@ -1142,6 +1480,8 @@ def normalize_visual_intake_payload(item: Any) -> Any:
 
     if "candidate_diseases" in normalized:
         normalized["candidate_diseases"] = normalize_candidate_diseases(normalized.get("candidate_diseases"))
+    enforce_surface_consistency(normalized)
+    calibrate_candidate_diseases_for_intake(normalized)
 
     return normalized
 
@@ -1757,7 +2097,7 @@ def normalize_visual_intakes(
             continue
         visual_intake_id = get_or_create_visual_intake_id(session, image_id, turn_id=turn_id)
         old = merged.get(visual_intake_id, {})
-        sanitized = {key: item[key] for key in allowed_fields if key in item}
+        sanitized = normalize_visual_intake_payload({key: item[key] for key in allowed_fields if key in item})
         now = now_utc()
         merged[visual_intake_id] = {
             **old,
@@ -1826,12 +2166,16 @@ def normalize_memory(
     ]:
         if not isinstance(memory[list_key], list):
             memory[list_key] = []
-        memory[list_key] = [str(item) for item in memory[list_key]][:12]
+        if list_key in {"evidence_present", "evidence_missing"}:
+            memory[list_key] = semantic_evidence_list(memory[list_key], max_items=12)
+        else:
+            memory[list_key] = [str(item) for item in memory[list_key]][:12]
     for text_key in ["summary", "user_goal", "current_diagnosis", "evidence_sufficiency", "recommended_next_image"]:
         if memory[text_key] is not None and not isinstance(memory[text_key], str):
             memory[text_key] = str(memory[text_key])
     if memory["single_surface_assessment"] is not None and not isinstance(memory["single_surface_assessment"], dict):
         memory["single_surface_assessment"] = {"note": str(memory["single_surface_assessment"])}
+    calibrate_candidate_diseases_for_memory(memory)
     return memory
 
 

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/base/claim_support.schema.json",
+  "title": "Claim Support Record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "claim_id",
+    "claim",
+    "claim_type",
+    "support_status",
+    "evidence_refs",
+    "missing_evidence",
+    "risk_level",
+    "recommended_action"
+  ],
+  "properties": {
+    "claim_id": {
+      "type": "string"
+    },
+    "claim": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claim_type": {
+      "type": "string",
+      "enum": [
+        "visual_observation",
+        "diagnosis",
+        "treatment",
+        "source_fact",
+        "system_behavior",
+        "data",
+        "other"
+      ]
+    },
+    "support_status": {
+      "type": "string",
+      "enum": [
+        "fully_supported",
+        "partially_supported",
+        "no_support",
+        "not_checked"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "missing_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": [
+        "keep",
+        "hedge",
+        "remove",
+        "ask_followup",
+        "human_review"
+      ]
+    }
+  }
+}

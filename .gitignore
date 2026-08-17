@@ -38,3 +38,6 @@ yolo*.pt
 .vscode/
 .vs/
 .env/
+
+wiki_update_piepeline.md
+chat_pipeline.md
