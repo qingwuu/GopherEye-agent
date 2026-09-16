@@ -43,8 +43,14 @@ Return ONLY valid JSON with this shape:
         "reason": "max 10 words"
       }
     ],
-    "global_visual_signals": [
-      "max 8 controlled snake_case visual signals"
+    "positive_signals": [
+      "max 8 observed controlled snake_case signals"
+    ],
+    "negative_signals": [
+      "max 6 explicitly absent controlled snake_case signals"
+    ],
+    "pattern_signals": [
+      "max 4 pattern-level controlled snake_case signals"
     ],
     "surface_observations": [
       {
@@ -57,7 +63,7 @@ Return ONLY valid JSON with this shape:
     ],
     "candidate_hints": [
       {
-        "disease_id": "powdery_mildew | downy_mildew | healthy | others",
+        "entity_id": "powdery_mildew | downy_mildew | healthy | others",
         "support": "supporting | possible | weakened | negative | unresolved",
         "reasons": [],
         "needed_detail_roles": []
@@ -67,7 +73,7 @@ Return ONLY valid JSON with this shape:
     "evidence_missing": [],
     "needed_detail_pages": [
       {
-        "disease_id": "downy_mildew",
+        "entity_id": "downy_mildew",
         "roles": ["visual_evidence_thresholds", "feature_checklist", "differentials", "image_requests"],
         "reason": "why these terminal detailed pages are needed"
       }
@@ -95,18 +101,19 @@ Controlled signal examples:
 
 Rules:
 - Separate observation from interpretation.
-- Candidate hints are retrieval hints, not final labels.
-- Maximums: 2 visible_surfaces per two input images, 8 global_visual_signals,
+- Put observed signs in positive_signals. Put explicitly absent signs in
+  negative_signals. Put broad patterns in pattern_signals.
+- Candidate hints are weak retrieval hints, not final labels.
+- Maximums: 2 visible_surfaces per two input images, 8 positive_signals,
+  6 negative_signals, 4 pattern_signals,
   2 signals_present and 2 signals_absent per image, 4 candidate_hints,
   2 reasons per candidate, and 4 needed_detail_roles per candidate.
 - In signals_absent, use explicit *_absent names. For example, write
   white_gray_powdery_colonies_absent, not white_gray_powdery_colonies_present.
-- Include a candidate as weakened when the canonical sign is specifically absent
-  but it remains a necessary differential.
-- Include "others" when lesions, necrosis, scorch, specks, insect-like damage,
-  mixed signs, or noncanonical patterns are visible or unresolved.
+- Include a candidate as weakened when a profile-level canonical sign is
+  specifically absent but it remains a necessary differential.
 - If output space is tight, omit surface_observations first; never omit
-  global_visual_signals or candidate_hints.
+  positive_signals, negative_signals, or pattern_signals.
 - Keep this JSON compact. Do not include markdown, citations, or final diagnosis.
 """
 

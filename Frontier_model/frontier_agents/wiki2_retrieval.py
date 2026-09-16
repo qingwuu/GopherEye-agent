@@ -12,6 +12,7 @@ from src.gophereye_runtime.utils import now_utc, safe_print, write_json, write_j
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WIKI2_DIR = REPO_ROOT / "wiki2"
 DEFAULT_WIKI2_CATALOG_DIR = REPO_ROOT / "catalog" / "wiki2"
+DEFAULT_RETRIEVAL_PROFILE_NAME = "retrieval_profiles.json"
 
 PARENT_PAGE_TYPE = "detailed_parent_page"
 DETAIL_PAGE_TYPE = "detailed_section_page"
@@ -54,37 +55,6 @@ STAGE1_INTAKE_PATHS = [
 STAGE2_TERMINAL_PROCEDURE_PATHS = [
     "procedures/diagnosis_sop/differential_frame.md",
     "procedures/image_and_evidence_sop/single_surface_sufficiency.md",
-]
-
-SUPPORTED_DISEASE_ROLES = [
-    "visual_evidence_thresholds",
-    "feature_checklist",
-    "differentials",
-    "image_requests",
-]
-
-POSSIBLE_DISEASE_ROLES = [
-    "visual_evidence_thresholds",
-    "feature_checklist",
-    "differentials",
-]
-
-WEAKENED_DISEASE_ROLES = [
-    "visual_evidence_thresholds",
-    "differentials",
-]
-
-OTHERS_DISEASE_ROLES = [
-    "visual_patterns",
-    "required_handling",
-    "differentials",
-    "promotion_rule",
-]
-
-HEALTHY_DISEASE_ROLES = [
-    "minimum_evidence",
-    "differentials",
-    "image_requests",
 ]
 
 TREATMENT_POLICY_PATHS = [
@@ -169,52 +139,38 @@ SUPPORT_RANK = {
     "supporting": 4,
 }
 
-SIGNAL_KEYWORDS = {
-    "powdery_mildew_support": [
-        "white_gray_powdery_colonies_present",
-        "powdery_colonies_present",
-        "dusty_surface_growth",
-        "webby_mycelium",
-        "white_gray_surface_colonies",
-    ],
-    "powdery_mildew_weaken": [
-        "white_gray_powdery_colonies_absent",
-        "powdery_colonies_absent",
-        "no_powdery_colonies",
-    ],
-    "downy_mildew_support": [
-        "oil_spot_like_yellowing",
-        "oil_spots",
-        "oily_yellow_spots",
-        "vein_bounded_or_angular_lesions",
-        "angular_vein_limited_lesions",
-        "cottony_downy_sporulation_present",
-        "downy_sporulation_present",
-    ],
-    "downy_mildew_weaken": [
-        "cottony_downy_sporulation_absent",
-        "downy_sporulation_absent",
-        "no_cottony_sporulation",
-    ],
-    "others_support": [
-        "necrotic_leaf_spots",
-        "necrotic_spots",
-        "yellow_brown_lesions",
-        "brown_spots",
-        "marginal_scorch",
-        "dark_specks",
-        "insect_like_damage",
-        "mite_like_damage",
-        "mixed_signs",
-        "noncanonical_leaf_spot_pattern",
-        "unresolved_leaf_spot_pattern",
-        "residue_or_glare_possible",
-    ],
-    "healthy_support": [
-        "healthy_variation_possible",
-        "no_visible_symptoms",
-        "normal_leaf_variation",
-    ],
+DEFAULT_TERMINAL_ROLE_POLICY = {
+    "primary": ["visual_evidence_thresholds", "feature_checklist", "differentials", "image_requests"],
+    "differential": ["visual_evidence_thresholds", "differentials", "image_requests"],
+    "weakened": ["visual_evidence_thresholds", "differentials", "image_requests"],
+    "negative": ["visual_evidence_thresholds", "differentials"],
+    "unresolved": ["visual_evidence_thresholds", "differentials"],
+}
+
+DEFAULT_ROLE_LIMITS = {
+    "primary": 4,
+    "differential": 3,
+    "weakened": 3,
+    "negative": 2,
+    "unresolved": 3,
+}
+
+STATUS_RANK = {
+    "primary": 5,
+    "differential": 4,
+    "unresolved": 3,
+    "weakened": 2,
+    "negative": 2,
+    "irrelevant": 0,
+}
+
+STATUS_SUPPORT_LABEL = {
+    "primary": "supporting",
+    "differential": "possible",
+    "unresolved": "unresolved",
+    "weakened": "weakened",
+    "negative": "negative",
+    "irrelevant": "negative",
 }
 
 
@@ -398,6 +354,115 @@ def build_page_record(path: Path, wiki2_dir: Path) -> Dict[str, Any]:
     }
 
 
+def _normalized_string_list(value: Any) -> List[str]:
+    items = value if isinstance(value, list) else [value] if value else []
+    out: List[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _normalized_signal_list(value: Any) -> List[str]:
+    out: List[str] = []
+    for item in _normalized_string_list(value):
+        normalized = normalize_signal_name(item)
+        if normalized and normalized not in out:
+            out.append(normalized)
+    return out
+
+
+def _normalized_role_list(value: Any) -> List[str]:
+    out: List[str] = []
+    for item in _normalized_string_list(value):
+        role = normalize_detail_role(item)
+        if role and role not in out:
+            out.append(role)
+    return out
+
+
+def normalize_terminal_roles(value: Any, default_policy: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    role_map = value if isinstance(value, dict) else {}
+    normalized: Dict[str, List[str]] = {}
+    for status, default_roles in default_policy.items():
+        normalized[status] = _normalized_role_list(role_map.get(status) or default_roles)
+    return normalized
+
+
+def normalize_role_limits(value: Any) -> Dict[str, int]:
+    limits = dict(DEFAULT_ROLE_LIMITS)
+    if not isinstance(value, dict):
+        return limits
+    for status, raw_limit in value.items():
+        if status not in limits:
+            continue
+        try:
+            limits[status] = max(1, int(raw_limit))
+        except (TypeError, ValueError):
+            continue
+    return limits
+
+
+def normalize_entity_profile(raw: Dict[str, Any], default_policy: Dict[str, List[str]]) -> Dict[str, Any] | None:
+    entity_id = str(raw.get("entity_id") or raw.get("disease_id") or "").strip()
+    if not entity_id:
+        return None
+    entity_type = str(raw.get("entity_type") or "disease").strip() or "disease"
+    try:
+        priority = int(raw.get("priority", 50))
+    except (TypeError, ValueError):
+        priority = 50
+    return {
+        "entity_id": entity_id,
+        "entity_type": entity_type,
+        "aliases": _normalized_string_list(raw.get("aliases")),
+        "support_signals": _normalized_signal_list(raw.get("support_signals")),
+        "weaken_signals": _normalized_signal_list(raw.get("weaken_signals")),
+        "route_when_uncertain": bool(raw.get("route_when_uncertain")),
+        "priority": priority,
+        "terminal_roles": normalize_terminal_roles(raw.get("terminal_roles"), default_policy),
+        "role_limits": normalize_role_limits(raw.get("role_limits")),
+    }
+
+
+def load_retrieval_profiles(wiki2_dir: Path = DEFAULT_WIKI2_DIR) -> Dict[str, Any]:
+    profile_path = wiki2_dir / DEFAULT_RETRIEVAL_PROFILE_NAME
+    if not profile_path.exists():
+        return {
+            "schema_version": 0,
+            "profile_path": str(profile_path),
+            "default_role_policy": DEFAULT_TERMINAL_ROLE_POLICY,
+            "entities": [],
+            "load_status": "missing",
+        }
+    try:
+        raw = json.loads(read_text(profile_path))
+    except json.JSONDecodeError as exc:
+        return {
+            "schema_version": 0,
+            "profile_path": str(profile_path),
+            "default_role_policy": DEFAULT_TERMINAL_ROLE_POLICY,
+            "entities": [],
+            "load_status": f"invalid_json:{exc}",
+        }
+    default_policy = normalize_terminal_roles(raw.get("default_role_policy"), DEFAULT_TERMINAL_ROLE_POLICY)
+    entities = []
+    for item in raw.get("entities", []) if isinstance(raw.get("entities"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        normalized = normalize_entity_profile(item, default_policy)
+        if normalized:
+            entities.append(normalized)
+    return {
+        "schema_version": raw.get("schema_version", 1),
+        "profile_path": str(profile_path),
+        "default_role_policy": default_policy,
+        "entities": entities,
+        "load_status": "ok",
+    }
+
+
 def build_catalog(
     *,
     wiki2_dir: Path = DEFAULT_WIKI2_DIR,
@@ -405,6 +470,7 @@ def build_catalog(
 ) -> Dict[str, Any]:
     pages = [build_page_record(path, wiki2_dir) for path in iter_markdown_files(wiki2_dir)]
     pages.sort(key=lambda page: page["path"])
+    retrieval_profiles = load_retrieval_profiles(wiki2_dir)
 
     children_by_parent: Dict[str, List[str]] = {}
     for page in pages:
@@ -421,6 +487,13 @@ def build_catalog(
         "num_detailed_pages": sum(1 for page in pages if page.get("page_type") == DETAIL_PAGE_TYPE),
         "num_parent_pages": sum(1 for page in pages if page.get("page_type") == PARENT_PAGE_TYPE),
         "children_by_parent": children_by_parent,
+        "entity_profiles": retrieval_profiles.get("entities", []),
+        "retrieval_profile_meta": {
+            "schema_version": retrieval_profiles.get("schema_version"),
+            "profile_path": retrieval_profiles.get("profile_path"),
+            "load_status": retrieval_profiles.get("load_status"),
+            "default_role_policy": retrieval_profiles.get("default_role_policy"),
+        },
         "pages": pages,
     }
     write_json(catalog_dir / "catalog.json", catalog)
@@ -439,7 +512,9 @@ def load_or_build_catalog(
     catalog_path = catalog_dir / "catalog.json"
     if catalog_path.exists():
         try:
-            return json.loads(read_text(catalog_path))
+            catalog = json.loads(read_text(catalog_path))
+            if isinstance(catalog, dict) and "entity_profiles" in catalog:
+                return catalog
         except json.JSONDecodeError:
             pass
     return build_catalog(wiki2_dir=wiki2_dir, catalog_dir=catalog_dir)
@@ -689,13 +764,7 @@ def top_parent_candidates(catalog: Dict[str, Any], query: str, route: Dict[str, 
     ]
 
 
-ABSENT_SIGNAL_ALIASES = {
-    "white_gray_powdery_colonies_present": "white_gray_powdery_colonies_absent",
-    "powdery_colonies_present": "powdery_colonies_absent",
-    "powdery_surface_growth_present": "powdery_colonies_absent",
-    "cottony_downy_sporulation_present": "cottony_downy_sporulation_absent",
-    "downy_sporulation_present": "downy_sporulation_absent",
-}
+ABSENT_SIGNAL_ALIASES: Dict[str, str] = {}
 
 
 def normalize_signal_name(value: Any) -> str | None:
@@ -718,6 +787,19 @@ def visual_signal_sets(visual_signal_vector: Dict[str, Any]) -> tuple[set[str], 
     """Return positive and negative visual signals without mixing absent fields."""
     positive: set[str] = set()
     negative: set[str] = set()
+
+    for raw_signal in visual_signal_vector.get("positive_signals", []) if isinstance(visual_signal_vector, dict) else []:
+        signal = normalize_signal_name(raw_signal)
+        if signal:
+            positive.add(signal)
+    for raw_signal in visual_signal_vector.get("pattern_signals", []) if isinstance(visual_signal_vector, dict) else []:
+        signal = normalize_signal_name(raw_signal)
+        if signal:
+            positive.add(signal)
+    for raw_signal in visual_signal_vector.get("negative_signals", []) if isinstance(visual_signal_vector, dict) else []:
+        signal = normalize_absent_signal_name(raw_signal)
+        if signal:
+            negative.add(signal)
 
     for raw_signal in visual_signal_vector.get("global_visual_signals", []) if isinstance(visual_signal_vector, dict) else []:
         signal = normalize_signal_name(raw_signal)
@@ -783,8 +865,195 @@ def _merge_candidate(
             current["roles"].append(role)
 
 
+def entity_profiles_for_catalog(catalog: Dict[str, Any]) -> List[Dict[str, Any]]:
+    profiles = catalog.get("entity_profiles")
+    return [profile for profile in profiles if isinstance(profile, dict)] if isinstance(profiles, list) else []
+
+
+def canonical_entity_id(value: Any, profiles: Sequence[Dict[str, Any]]) -> str | None:
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if not text:
+        return None
+    for profile in profiles:
+        entity_id = str(profile.get("entity_id") or "")
+        if text == entity_id.lower().replace("-", "_").replace(" ", "_"):
+            return entity_id
+        for alias in profile.get("aliases", []) if isinstance(profile.get("aliases"), list) else []:
+            alias_text = str(alias or "").strip().lower().replace("-", "_").replace(" ", "_")
+            if text == alias_text:
+                return entity_id
+    return None
+
+
+def visual_query_blob(*texts: Any) -> str:
+    return " ".join(str(text or "") for text in texts).lower()
+
+
+def text_matches_profile_alias(text: str, profile: Dict[str, Any]) -> List[str]:
+    lower = text.lower()
+    matches: List[str] = []
+    entity_id = str(profile.get("entity_id") or "")
+    needles = [entity_id.replace("_", " "), entity_id]
+    needles.extend(str(alias or "") for alias in profile.get("aliases", []) if alias)
+    for needle in needles:
+        normalized = str(needle or "").strip().lower()
+        if normalized and normalized in lower and normalized not in matches:
+            matches.append(normalized)
+    return matches
+
+
+def candidate_hints_by_entity(
+    visual_signal_vector: Dict[str, Any],
+    profiles: Sequence[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    hints: Dict[str, Dict[str, Any]] = {}
+    hint_items = visual_signal_vector.get("candidate_hints") if isinstance(visual_signal_vector, dict) else []
+    for hint in hint_items if isinstance(hint_items, list) else []:
+        if not isinstance(hint, dict):
+            continue
+        entity_id = canonical_entity_id(hint.get("entity_id") or hint.get("disease_id") or hint.get("entity"), profiles)
+        if not entity_id:
+            continue
+        current = hints.setdefault(entity_id, {"supports": [], "roles": [], "reasons": []})
+        support = normalize_support(hint.get("support"))
+        if support not in current["supports"]:
+            current["supports"].append(support)
+        for role in _normalized_role_list(hint.get("needed_detail_roles")):
+            if role not in current["roles"]:
+                current["roles"].append(role)
+        for reason in _normalized_string_list(hint.get("reasons"))[:3]:
+            if reason not in current["reasons"]:
+                current["reasons"].append(reason)
+    return hints
+
+
+def requested_roles_by_entity(
+    visual_signal_vector: Dict[str, Any],
+    profiles: Sequence[Dict[str, Any]],
+) -> Dict[str, List[str]]:
+    requests: Dict[str, List[str]] = {}
+    request_items = visual_signal_vector.get("needed_detail_pages") if isinstance(visual_signal_vector, dict) else []
+    for request in request_items if isinstance(request_items, list) else []:
+        if not isinstance(request, dict):
+            continue
+        entity_id = canonical_entity_id(request.get("entity_id") or request.get("disease_id") or request.get("entity"), profiles)
+        if not entity_id:
+            continue
+        requests.setdefault(entity_id, [])
+        for role in _normalized_role_list(request.get("roles")):
+            if role not in requests[entity_id]:
+                requests[entity_id].append(role)
+    return requests
+
+
+def strongest_hint_support(hints: Sequence[str]) -> str | None:
+    if not hints:
+        return None
+    return max(hints, key=lambda support: SUPPORT_RANK.get(support, 0))
+
+
+def uncertainty_signal_present(positive_signals: set[str], negative_signals: set[str]) -> bool:
+    uncertainty_markers = ["uncertain", "unresolved", "noncanonical", "insufficient", "ambiguous"]
+    all_signals = positive_signals | negative_signals
+    return any(any(marker in signal for marker in uncertainty_markers) for signal in all_signals)
+
+
+def score_entity_profile(
+    profile: Dict[str, Any],
+    *,
+    positive_signals: set[str],
+    negative_signals: set[str],
+    text_blob: str,
+    hint: Dict[str, Any] | None,
+    requested_roles: Sequence[str],
+) -> Dict[str, Any]:
+    support_signals = set(_normalized_signal_list(profile.get("support_signals")))
+    weaken_signals = set(_normalized_signal_list(profile.get("weaken_signals")))
+    support_matches = sorted(support_signals & positive_signals)
+    weaken_matches = sorted(weaken_signals & (positive_signals | negative_signals))
+    alias_matches = text_matches_profile_alias(text_blob, profile)
+    hint_support = strongest_hint_support((hint or {}).get("supports", []))
+    hint_roles = _normalized_role_list((hint or {}).get("roles", []))
+    hint_reasons = _normalized_string_list((hint or {}).get("reasons", []))[:3]
+    uncertain_bonus = 0.75 if profile.get("route_when_uncertain") and uncertainty_signal_present(positive_signals, negative_signals) else 0.0
+    hint_bonus = {
+        "supporting": 1.5,
+        "possible": 0.75,
+        "unresolved": 0.5,
+        "weakened": 0.25,
+        "negative": 0.0,
+    }.get(str(hint_support or ""), 0.0)
+    score = (
+        len(support_matches) * 3.0
+        - len(weaken_matches) * 2.0
+        + len(alias_matches) * 1.0
+        + hint_bonus
+        + uncertain_bonus
+    )
+
+    status = "irrelevant"
+    if support_matches:
+        if weaken_matches:
+            status = "differential" if score >= 1.0 else "weakened"
+        elif score >= 5.0 or hint_support == "supporting" or len(support_matches) >= 2:
+            status = "primary"
+        else:
+            status = "differential"
+    elif weaken_matches:
+        status = "negative" if hint_support == "negative" else "weakened"
+    elif hint_support in {"supporting", "possible"}:
+        status = "primary" if hint_support == "supporting" else "differential"
+    elif hint_support in {"unresolved", "weakened", "negative"}:
+        status = hint_support
+    elif alias_matches:
+        status = "differential"
+    elif requested_roles and profile.get("route_when_uncertain"):
+        status = "unresolved"
+    elif profile.get("route_when_uncertain") and uncertainty_signal_present(positive_signals, negative_signals):
+        status = "unresolved"
+
+    if status == "negative" and (support_matches or alias_matches):
+        status = "weakened"
+
+    roles = []
+    for role in hint_roles + _normalized_role_list(requested_roles):
+        if role not in roles:
+            roles.append(role)
+
+    return {
+        "entity_id": profile.get("entity_id"),
+        "disease_id": profile.get("entity_id") if profile.get("entity_type") == "disease" else None,
+        "entity_type": profile.get("entity_type"),
+        "status": status,
+        "support": STATUS_SUPPORT_LABEL.get(status, "possible"),
+        "score": round(score, 3),
+        "support_signal_matches": support_matches,
+        "weaken_signal_matches": weaken_matches,
+        "alias_matches": alias_matches,
+        "hint_support": hint_support,
+        "hint_reasons": hint_reasons,
+        "roles": roles,
+        "terminal_roles": profile.get("terminal_roles") or DEFAULT_TERMINAL_ROLE_POLICY,
+        "role_limits": profile.get("role_limits") or DEFAULT_ROLE_LIMITS,
+        "priority": profile.get("priority", 50),
+        "reasons": [
+            reason
+            for reason in [
+                "profile_support_signal_match" if support_matches else "",
+                "profile_weaken_signal_match" if weaken_matches else "",
+                "profile_alias_match" if alias_matches else "",
+                "stage1_candidate_hint" if hint_support else "",
+                "stage1_requested_terminal_roles" if requested_roles else "",
+                "route_when_uncertain" if uncertain_bonus else "",
+            ]
+            if reason
+        ],
+    }
+
+
 def candidate_map_from_visual_signals(
     *,
+    catalog: Dict[str, Any],
     query: str,
     visual_signal_vector: Dict[str, Any],
     route: Dict[str, Any] | None,
@@ -792,219 +1061,70 @@ def candidate_map_from_visual_signals(
     image_refs: Sequence[str],
 ) -> Dict[str, Dict[str, Any]]:
     candidates: Dict[str, Dict[str, Any]] = {}
+    profiles = entity_profiles_for_catalog(catalog)
     memory_text = json.dumps(memory or {}, ensure_ascii=False, default=str)
-    visual_text = json.dumps(visual_signal_vector or {}, ensure_ascii=False, default=str)
-
-    for disease_id in infer_disease_candidates(query, memory_text):
-        _merge_candidate(
-            candidates,
-            disease_id,
-            support="possible",
-            roles=POSSIBLE_DISEASE_ROLES,
-            reason="explicit_user_or_memory_disease_hint",
-        )
-
-    if isinstance(visual_signal_vector.get("candidate_hints"), list):
-        for hint in visual_signal_vector.get("candidate_hints", []):
-            if not isinstance(hint, dict):
-                continue
-            disease_id = canonical_disease_id(hint.get("disease_id") or hint.get("disease"))
-            if not disease_id:
-                continue
-            roles = hint.get("needed_detail_roles") if isinstance(hint.get("needed_detail_roles"), list) else []
-            support = normalize_support(hint.get("support"))
-            default_roles = (
-                SUPPORTED_DISEASE_ROLES
-                if support == "supporting"
-                else WEAKENED_DISEASE_ROLES
-                if support in {"weakened", "negative"}
-                else POSSIBLE_DISEASE_ROLES
-            )
-            _merge_candidate(
-                candidates,
-                disease_id,
-                support=support,
-                roles=list(roles) or default_roles,
-                reason="stage1_candidate_hint",
-            )
-
-    if isinstance(visual_signal_vector.get("needed_detail_pages"), list):
-        for request in visual_signal_vector.get("needed_detail_pages", []):
-            if not isinstance(request, dict):
-                continue
-            disease_id = canonical_disease_id(request.get("disease_id") or request.get("disease"))
-            if not disease_id:
-                continue
-            roles = request.get("roles") if isinstance(request.get("roles"), list) else []
-            existing_support = str(candidates.get(disease_id, {}).get("support") or "possible")
-            _merge_candidate(
-                candidates,
-                disease_id,
-                support=existing_support,
-                roles=list(roles) or POSSIBLE_DISEASE_ROLES,
-                reason="stage1_requested_terminal_roles",
-            )
-
     positive_signals, negative_signals = visual_signal_sets(visual_signal_vector)
-    if _has_any_signal(positive_signals, SIGNAL_KEYWORDS["powdery_mildew_support"]):
-        _merge_candidate(
-            candidates,
-            "powdery_mildew",
-            support="supporting",
-            roles=SUPPORTED_DISEASE_ROLES,
-            reason="powdery_surface_growth_signal",
-        )
-    if _has_any_signal(negative_signals, SIGNAL_KEYWORDS["powdery_mildew_weaken"]):
-        _merge_candidate(
-            candidates,
-            "powdery_mildew",
-            support="weakened",
-            roles=WEAKENED_DISEASE_ROLES,
-            reason="powdery_colonies_absent_signal",
-        )
-    if _has_any_signal(positive_signals, SIGNAL_KEYWORDS["downy_mildew_support"]):
-        _merge_candidate(
-            candidates,
-            "downy_mildew",
-            support="supporting",
-            roles=SUPPORTED_DISEASE_ROLES,
-            reason="downy_oil_spot_or_sporulation_signal",
-        )
-    if _has_any_signal(negative_signals, SIGNAL_KEYWORDS["downy_mildew_weaken"]):
-        support = str(candidates.get("downy_mildew", {}).get("support") or "weakened")
-        _merge_candidate(
-            candidates,
-            "downy_mildew",
-            support=support,
-            roles=["visual_evidence_thresholds", "differentials", "image_requests"],
-            reason="downy_sporulation_missing_or_absent_signal",
-        )
-    if _has_any_signal(positive_signals, SIGNAL_KEYWORDS["others_support"]):
-        _merge_candidate(
-            candidates,
-            "others",
-            support="possible",
-            roles=OTHERS_DISEASE_ROLES,
-            reason="noncanonical_or_unresolved_leaf_spot_signal",
-        )
-    if _has_any_signal(positive_signals, SIGNAL_KEYWORDS["healthy_support"]):
-        _merge_candidate(
-            candidates,
-            "healthy",
-            support="possible",
-            roles=HEALTHY_DISEASE_ROLES,
-            reason="healthy_or_low_symptom_signal",
-        )
+    hints = candidate_hints_by_entity(visual_signal_vector, profiles)
+    requests = requested_roles_by_entity(visual_signal_vector, profiles)
+    text_blob = visual_query_blob(query, memory_text)
 
-    canonical_comparison = any(
-        token in f"{query}\n{visual_text}".lower()
-        for token in ["compare", "differential", "versus", " vs ", "powdery", "downy", "\u9274\u522b", "\u6bd4\u8f83"]
-    )
-    if canonical_comparison or (is_visual_query(query, route, image_refs) and not candidates):
-        for disease_id in ["powdery_mildew", "downy_mildew"]:
-            _merge_candidate(
-                candidates,
-                disease_id,
-                support="possible" if disease_id not in candidates else str(candidates[disease_id]["support"]),
-                roles=WEAKENED_DISEASE_ROLES if disease_id in candidates else POSSIBLE_DISEASE_ROLES,
-                reason="canonical_visual_differential_safety_net",
-            )
-
-    if is_visual_query(query, route, image_refs) and "others" not in candidates:
-        uncertain_tokens = [
-            "uncertain",
-            "unresolved",
-            "insufficient",
-            "necrotic",
-            "lesion",
-            "spot",
-            "brown",
-            "yellow",
-            "missing",
-            "absent",
-        ]
-        if any(token in f"{query}\n{visual_text}".lower() for token in uncertain_tokens):
-            _merge_candidate(
-                candidates,
-                "others",
-                support="possible",
-                roles=OTHERS_DISEASE_ROLES[:3],
-                reason="uncertainty_or_noncanonical_text_signal",
-            )
+    for profile in profiles:
+        entity_id = str(profile.get("entity_id") or "")
+        scored = score_entity_profile(
+            profile,
+            positive_signals=positive_signals,
+            negative_signals=negative_signals,
+            text_blob=text_blob,
+            hint=hints.get(entity_id),
+            requested_roles=requests.get(entity_id, []),
+        )
+        if scored.get("status") == "irrelevant":
+            continue
+        candidates[entity_id] = scored
 
     return candidates
 
 
-def roles_for_candidate(disease_id: str, support: str, explicit_roles: Sequence[str]) -> List[str]:
-    roles = [role for role in (normalize_detail_role(item) for item in explicit_roles) if role]
-    if roles:
-        return list(dict.fromkeys(roles))
-    support = normalize_support(support)
-    if disease_id == "others":
-        return OTHERS_DISEASE_ROLES
-    if disease_id == "healthy":
-        return HEALTHY_DISEASE_ROLES
-    if support == "supporting":
-        return SUPPORTED_DISEASE_ROLES
-    if support in {"weakened", "negative"}:
-        return WEAKENED_DISEASE_ROLES
-    return POSSIBLE_DISEASE_ROLES
+def roles_for_candidate(candidate: Dict[str, Any]) -> List[str]:
+    explicit_roles = _normalized_role_list(candidate.get("roles"))
+    terminal_roles = candidate.get("terminal_roles") if isinstance(candidate.get("terminal_roles"), dict) else {}
+    status = str(candidate.get("status") or "differential")
+    default_roles = terminal_roles.get(status) or DEFAULT_TERMINAL_ROLE_POLICY.get(status) or DEFAULT_TERMINAL_ROLE_POLICY["differential"]
+    roles: List[str] = []
+    for role in _normalized_role_list(default_roles) + list(explicit_roles):
+        if role not in roles:
+            roles.append(role)
+    return roles
 
 
 def ordered_candidates(candidate_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    def disease_priority(item: Dict[str, Any]) -> int:
-        disease_id = str(item.get("disease_id") or "")
-        if disease_id in {"downy_mildew", "powdery_mildew"}:
-            return 1
-        if disease_id == "others":
-            return 0
-        if disease_id == "healthy":
-            return 2
-        return 3
-
     return sorted(
         candidate_map.values(),
         key=lambda item: (
-            -SUPPORT_RANK.get(str(item.get("support")), 0),
-            disease_priority(item),
+            -STATUS_RANK.get(str(item.get("status") or ""), 0),
+            -float(item.get("score") or 0.0),
+            -int(item.get("priority") or 0),
             str(item.get("disease_id")),
         ),
     )
 
 
-def terminal_role_limit(disease_id: str, support: str, candidate_count: int) -> int:
-    support = normalize_support(support)
-    if disease_id == "others":
-        return 3 if candidate_count > 1 else 4
-    if disease_id == "healthy":
-        return 1 if candidate_count > 1 else 3
-    if support == "supporting":
-        return 4 if candidate_count <= 2 else 3
-    if support in {"weakened", "negative"}:
-        return 3 if disease_id == "downy_mildew" else 2
-    return 3
+def terminal_role_limit(candidate: Dict[str, Any], candidate_count: int) -> int:
+    status = str(candidate.get("status") or "differential")
+    limits = candidate.get("role_limits") if isinstance(candidate.get("role_limits"), dict) else DEFAULT_ROLE_LIMITS
+    try:
+        limit = int(limits.get(status, DEFAULT_ROLE_LIMITS.get(status, 3)))
+    except (TypeError, ValueError):
+        limit = DEFAULT_ROLE_LIMITS.get(status, 3)
+    if candidate_count >= 4 and status in {"differential", "weakened", "unresolved"}:
+        limit = min(limit, 3)
+    if candidate_count >= 5:
+        limit = min(limit, 2)
+    return max(1, limit)
 
 
-def limited_terminal_roles(disease_id: str, support: str, roles: Sequence[str], candidate_count: int) -> List[str]:
-    support = normalize_support(support)
-    limit = terminal_role_limit(disease_id, support, candidate_count)
-    if disease_id == "downy_mildew" and support in {"weakened", "negative"}:
-        preferred = ["visual_evidence_thresholds", "differentials", "image_requests", "feature_checklist"]
-    elif disease_id == "powdery_mildew" and support in {"weakened", "negative"}:
-        preferred = ["visual_evidence_thresholds", "differentials", "image_requests", "feature_checklist"]
-    else:
-        preferred = {
-            "others": ["visual_patterns", "required_handling", "differentials", "promotion_rule"],
-            "healthy": ["minimum_evidence", "differentials", "image_requests"],
-            "downy_mildew": ["visual_evidence_thresholds", "feature_checklist", "differentials", "image_requests"],
-            "powdery_mildew": ["visual_evidence_thresholds", "feature_checklist", "differentials", "image_requests"],
-        }.get(disease_id, list(roles))
-    normalized_roles = [role for role in (normalize_detail_role(item) for item in roles) if role]
-    ordered = [role for role in preferred if role in normalized_roles or not normalized_roles]
-    for role in normalized_roles:
-        if role not in ordered:
-            ordered.append(role)
-    return ordered[:limit]
+def limited_terminal_roles(candidate: Dict[str, Any], candidate_count: int) -> List[str]:
+    return roles_for_candidate(candidate)[: terminal_role_limit(candidate, candidate_count)]
 
 
 def remove_search_cue_block(text: str) -> str:
@@ -1131,6 +1251,7 @@ def select_wiki2_context_from_signals(
     catalog = load_or_build_catalog(wiki2_dir=wiki2_dir, catalog_dir=catalog_dir)
     by_path = page_by_path(catalog)
     candidate_map = candidate_map_from_visual_signals(
+        catalog=catalog,
         query=query,
         visual_signal_vector=visual_signal_vector,
         route=route,
@@ -1154,22 +1275,23 @@ def select_wiki2_context_from_signals(
     terminal_path_plan: List[Dict[str, Any]] = []
     ordered = ordered_candidates(candidate_map)
     for candidate in ordered:
-        disease_id = str(candidate["disease_id"])
+        disease_id = str(candidate.get("entity_id") or candidate.get("disease_id") or "")
         support = str(candidate.get("support") or "possible")
-        roles = limited_terminal_roles(
-            disease_id,
-            support,
-            roles_for_candidate(disease_id, support, candidate.get("roles") or []),
-            len(ordered),
-        )
+        status = str(candidate.get("status") or "differential")
+        roles = limited_terminal_roles(candidate, len(ordered))
         paths = disease_paths_for_roles(catalog, disease_id, roles)
         terminal_path_plan.append(
             {
+                "entity_id": disease_id,
                 "disease_id": disease_id,
+                "status": status,
                 "support": support,
+                "score": candidate.get("score"),
                 "roles": roles,
                 "paths": paths,
                 "reasons": candidate.get("reasons") or [],
+                "support_signal_matches": candidate.get("support_signal_matches") or [],
+                "weaken_signal_matches": candidate.get("weaken_signal_matches") or [],
             }
         )
         for path in paths:

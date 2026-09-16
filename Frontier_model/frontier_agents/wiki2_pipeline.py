@@ -17,7 +17,6 @@ from .wiki2_prompt import build_wiki2_prompt_parts
 from .wiki2_retrieval import (
     DEFAULT_WIKI2_CATALOG_DIR,
     DEFAULT_WIKI2_DIR,
-    SIGNAL_KEYWORDS,
     infer_disease_candidates,
     is_visual_query,
     select_wiki2_context,
@@ -348,32 +347,25 @@ def fallback_visual_signal_vector(
     }
 
 
-def known_stage1_signal_names() -> list[str]:
-    names: set[str] = set()
-    for values in SIGNAL_KEYWORDS.values():
-        names.update(values)
-    names.update(
-        [
-            "upper_surface_visible",
-            "underside_visible",
-            "surface_uncertain",
-            "insufficient_close_detail",
-            "noncanonical_leaf_spot_pattern",
-            "unresolved_leaf_spot_pattern",
-        ]
-    )
-    return sorted(names)
-
-
 def quoted_values_after_key(raw: str, key: str, *, max_items: int = 12) -> list[str]:
     match = re.search(rf'"{re.escape(key)}"\s*:\s*\[([\s\S]{{0,1600}})', raw)
     if not match:
         return []
-    allowed = set(known_stage1_signal_names())
+    ignored = {
+        "surface_observations",
+        "candidate_hints",
+        "needed_detail_pages",
+        "evidence_present",
+        "evidence_missing",
+        "next_retrieval_focus",
+        "image_order",
+        "signals_present",
+        "signals_absent",
+    }
     values: list[str] = []
     for value in re.findall(r'"([A-Za-z0-9_ -]+)"', match.group(1)):
         cleaned = re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_").lower()
-        if cleaned in allowed and cleaned not in values:
+        if "_" in cleaned and cleaned not in ignored and cleaned not in values:
             values.append(cleaned)
         if len(values) >= max_items:
             break
@@ -381,11 +373,11 @@ def quoted_values_after_key(raw: str, key: str, *, max_items: int = 12) -> list[
 
 
 def signals_from_partial_raw(raw: str) -> list[str]:
-    lower = raw.lower()
-    signals = quoted_values_after_key(raw, "global_visual_signals", max_items=12)
-    for name in known_stage1_signal_names():
-        if name in lower and name not in signals:
-            signals.append(name)
+    signals: list[str] = []
+    for key in ["positive_signals", "pattern_signals", "global_visual_signals", "negative_signals", "signals_present", "signals_absent"]:
+        for signal in quoted_values_after_key(raw, key, max_items=12):
+            if signal not in signals:
+                signals.append(signal)
     return signals[:12]
 
 
@@ -410,82 +402,23 @@ def visible_surfaces_from_partial_raw(raw: str, image_refs: Sequence[str]) -> li
     return surfaces
 
 
-def add_salvaged_candidate(
-    candidates: list[Dict[str, Any]],
-    disease_id: str,
-    *,
-    support: str,
-    reason: str,
-    roles: Sequence[str],
-) -> None:
-    existing = next((item for item in candidates if item.get("disease_id") == disease_id), None)
-    if existing:
-        if reason not in existing.setdefault("reasons", []):
-            existing["reasons"].append(reason)
-        for role in roles:
-            if role not in existing.setdefault("needed_detail_roles", []):
-                existing["needed_detail_roles"].append(role)
-        if existing.get("support") in {"negative", "weakened", "unresolved"} and support in {"possible", "supporting"}:
-            existing["support"] = support
-        return
-    candidates.append(
-        {
-            "disease_id": disease_id,
-            "support": support,
-            "reasons": [reason],
-            "needed_detail_roles": list(roles),
-        }
-    )
-
-
-def candidate_hints_from_partial_raw(raw: str, signals: Sequence[str]) -> list[Dict[str, Any]]:
-    lower = raw.lower()
-    signal_set = set(signals)
+def candidate_hints_from_partial_raw(raw: str) -> list[Dict[str, Any]]:
     candidates: list[Dict[str, Any]] = []
-    downy_support = any(name in signal_set for name in SIGNAL_KEYWORDS["downy_mildew_support"])
-    downy_absent = any(name in signal_set for name in SIGNAL_KEYWORDS["downy_mildew_weaken"])
-    powdery_support = any(name in signal_set for name in SIGNAL_KEYWORDS["powdery_mildew_support"])
-    powdery_absent = any(name in signal_set for name in SIGNAL_KEYWORDS["powdery_mildew_weaken"])
-    others_support = any(name in signal_set for name in SIGNAL_KEYWORDS["others_support"])
-    healthy_support = any(name in signal_set for name in SIGNAL_KEYWORDS["healthy_support"])
-
-    if "downy_mildew" in lower or downy_support or downy_absent:
-        add_salvaged_candidate(
-            candidates,
-            "downy_mildew",
-            support="possible" if downy_support else "weakened",
-            reason="salvaged downy-related visual signal",
-            roles=["visual_evidence_thresholds", "feature_checklist", "differentials", "image_requests"]
-            if downy_support
-            else ["visual_evidence_thresholds", "differentials", "image_requests"],
-        )
-    if "powdery_mildew" in lower or powdery_support or powdery_absent:
-        add_salvaged_candidate(
-            candidates,
-            "powdery_mildew",
-            support="supporting" if powdery_support else "weakened",
-            reason="salvaged powdery-related visual signal",
-            roles=["visual_evidence_thresholds", "feature_checklist", "differentials"]
-            if powdery_support
-            else ["visual_evidence_thresholds", "differentials"],
-        )
-    if "others" in lower or others_support:
-        add_salvaged_candidate(
-            candidates,
-            "others",
-            support="possible",
-            reason="salvaged noncanonical or unresolved leaf-spot signal",
-            roles=["visual_patterns", "required_handling", "differentials"],
-        )
-    if "healthy" in lower or healthy_support:
-        add_salvaged_candidate(
-            candidates,
-            "healthy",
-            support="possible",
-            reason="salvaged healthy or low-symptom signal",
-            roles=["minimum_evidence", "differentials"],
-        )
-    return candidates
+    for match in re.finditer(r'"(?:entity_id|disease_id)"\s*:\s*"([^"]+)"([\s\S]{0,500})', raw):
+        entity_id = re.sub(r"[^A-Za-z0-9_]+", "_", match.group(1)).strip("_").lower()
+        window = match.group(2)
+        support_match = re.search(r'"support"\s*:\s*"([^"]+)"', window)
+        support = support_match.group(1).strip().lower() if support_match else "possible"
+        roles = quoted_values_after_key(window, "needed_detail_roles", max_items=4)
+        item = {
+            "disease_id": entity_id,
+            "support": support,
+            "reasons": ["Recovered from partial Stage 1 candidate hint."],
+            "needed_detail_roles": roles,
+        }
+        if not any(old.get("disease_id") == entity_id for old in candidates):
+            candidates.append(item)
+    return candidates[:4]
 
 
 def salvage_visual_signal_vector(
@@ -495,7 +428,7 @@ def salvage_visual_signal_vector(
     image_refs: Sequence[str],
 ) -> Dict[str, Any] | None:
     signals = signals_from_partial_raw(raw)
-    candidate_hints = candidate_hints_from_partial_raw(raw, signals)
+    candidate_hints = candidate_hints_from_partial_raw(raw)
     if not signals and not candidate_hints:
         return None
     evidence_missing = []
