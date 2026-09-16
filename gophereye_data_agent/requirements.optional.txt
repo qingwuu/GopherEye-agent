@@ -1,0 +1,27 @@
+# Core CLI/runtime
+typer
+rich
+pydantic
+
+# LLM planners and agent frameworks
+openai
+anthropic
+openai-agents
+mcp
+
+# Vision workers
+ultralytics
+albumentations
+numpy
+pillow
+
+# Dataset curation, annotation, publishing, and tracking
+fiftyone
+label-studio-sdk
+roboflow
+huggingface-hub
+mlflow
+dvc
+lakefs
+lancedb
+duckdb

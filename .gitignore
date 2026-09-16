@@ -23,8 +23,21 @@ sessions/**/*.json
 Cloud_model/sessions/*.json
 catalog/
 draft_updates/*.md
+gophereye_data_workspace/
+wiki_update_agent_workspace/
+data_agent/
+mlartifacts/
+mlruns/
+mlflow.db
+mode/*.pt
+model/*.pt
+models/*.pt
+yolo*.pt
 
 .DS_Store
 .vscode/
 .vs/
 .env/
+
+wiki_update_piepeline.md
+chat_pipeline.md

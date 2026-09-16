@@ -108,6 +108,10 @@ Frontier session JSON outputs are saved outside this code folder under:
 sessions/frontier/
 ```
 
+By default the chat agent auto-sizes its selected-page budget from the current
+question complexity. Use `--max-selected-files N` only when you want to force a
+manual context limit for a specific run.
+
 ## Agent Flow
 
 ```text
@@ -115,7 +119,7 @@ user message / image
 -> router
 -> vision agent if images are attached
 -> retrieval agent over wiki or system pages
--> diagnosis/chat/data agent
+-> diagnosis/chat response agent
 -> thin assistant envelope JSON response
 -> session memory update
 -> saved session output

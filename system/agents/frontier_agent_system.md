@@ -50,14 +50,11 @@ diagnosis_agent
   Produces conservative diagnosis output from image evidence, session memory,
   and selected wiki botanical procedure pages.
 
-data_agent
-  Explains data collection, ingestion, label review, model output auditing, and
-  evaluation using system pages. It should not write unreviewed model claims
-  into wiki.
-
 chat_agent
   Handles follow-up questions using the current diagnosis state and selected
-  context pages.
+  context pages. For data-management questions, it can explain collection,
+  ingestion, label review, auditing, and evaluation, but it does not run or own
+  the independent GopherEye Data Agent workspace.
 ```
 
 ## Botanical Procedure Boundary
@@ -137,7 +134,6 @@ implemented:
   OpenAI / Claude / Kimi / local Qwen adapter structure
   JSON envelope validation, one retry, and fallback formatting
   session storage
-  deterministic Data Agent CLI sidecar for capture/review/indexing
 
 not yet implemented:
   human review UI

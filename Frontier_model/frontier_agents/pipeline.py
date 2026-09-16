@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 from pathlib import Path
@@ -8,6 +9,14 @@ from typing import Any, Dict, List, Sequence
 from .config import DEFAULT_CONFIG_PATH, load_model_config
 from .providers import create_backend
 from . import session_runtime as wiki_chat
+
+from src.gophereye_runtime.reflection import (
+    build_reflection_record,
+    check_claim_support,
+    decide_retrieval_need,
+    extract_atomic_claims,
+    refine_with_claim_support,
+)
 
 
 FRONTIER_DIR = Path(__file__).resolve().parents[1]
@@ -30,14 +39,108 @@ CORE_WIKI_CONTEXT_BY_TASK = {
         "disease/downy_mildew/index.md",
     ],
 }
+
+VISUAL_SIGNAL_TOKENS = [
+    "necrotic",
+    "necrosis",
+    "brown",
+    "tan-to-brown",
+    "yellow",
+    "chlorotic",
+    "vein",
+    "midrib",
+    "spot",
+    "spots",
+    "lesion",
+    "lesions",
+    "cottony",
+    "powdery",
+    "oily",
+    "oil",
+    "adaxial",
+    "abaxial",
+    "upper",
+    "lower",
+    "underside",
+]
 CORE_SYSTEM_CONTEXT_BY_TASK = {
     "data_management": [
-        "data/data_agent_workflow.md",
         "data/dataset_memory.md",
         "agents/frontier_agent_system.md",
         "contracts/schema_layer.md",
     ],
 }
+
+AUTO_SELECTED_PAGE_CEILING = 12
+AUTO_SELECTED_PAGE_BASE_BY_TASK = {
+    "general_project_chat": 3,
+    "data_management": 4,
+    "knowledge_management": 5,
+    "grape_leaf_chat": 4,
+    "visual_intake_or_diagnosis": 6,
+}
+COMPLEXITY_CUES = [
+    "compare",
+    "difference",
+    "differentiate",
+    "diagnose",
+    "diagnosis",
+    "differential",
+    "workflow",
+    "pipeline",
+    "plan",
+    "strategy",
+    "evaluate",
+    "tradeoff",
+    "trade-off",
+    "treatment",
+    "management",
+    "source",
+    "schema",
+    "memory",
+    "why",
+    "how",
+    "what should",
+    "all",
+    "multiple",
+    "complex",
+    "比较",
+    "区别",
+    "诊断",
+    "鉴别",
+    "流程",
+    "方案",
+    "计划",
+    "评估",
+    "权衡",
+    "治疗",
+    "管理",
+    "来源",
+    "证据",
+    "为什么",
+    "怎么",
+    "如何",
+    "全部",
+    "多个",
+    "复杂",
+]
+RETRIEVAL_QUERY_HINTS = [
+    (["白粉病", "白粉"], "powdery mildew"),
+    (["霜霉病", "霜霉"], "downy mildew"),
+    (["健康", "正常"], "healthy normal variation"),
+    (["其他病", "未知", "无法确定", "不确定"], "other unresolved conditions differential"),
+    (["治疗", "管理", "用药", "防治"], "treatment management source policy"),
+    (["诊断", "鉴别", "判断"], "diagnosis differential evidence thresholds"),
+    (["图片", "照片", "图像", "叶面", "正面", "背面"], "image evidence leaf surface"),
+    (["术语", "词汇"], "terminology controlled vocabulary"),
+    (["结构", "解剖", "叶片"], "grape leaf anatomy"),
+    (["数据", "数据集"], "data dataset memory"),
+    (["标注", "标签"], "label labeling annotation"),
+    (["流程", "pipeline"], "workflow pipeline"),
+    (["schema", "模式"], "schema layer envelope"),
+    (["wiki", "知识库"], "wiki knowledge base"),
+    (["agent", "代理"], "agent system"),
+]
 
 from src.single_model_wiki.core import (
     DEFAULT_CATALOG_DIR,
@@ -70,6 +173,106 @@ def parse_json_array(text: str) -> List[Any]:
     return value if isinstance(value, list) else []
 
 
+def _unique_strings(*groups: Any, limit: int = 12) -> List[str]:
+    out: List[str] = []
+    for group in groups:
+        if group is None:
+            continue
+        items = group if isinstance(group, list) else [group]
+        for item in items:
+            text = str(item).strip()
+            if text and text not in out:
+                out.append(text)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _supported_visual_terms(support_summary: Dict[str, Any]) -> List[str]:
+    terms: List[str] = []
+    for item in support_summary.get("claim_support", []):
+        if item.get("claim_type") != "visual_observation":
+            continue
+        if item.get("support_status") not in {"fully_supported", "partially_supported"}:
+            continue
+        if item.get("recommended_action") not in {"keep", "hedge"}:
+            continue
+        claim_text = str(item.get("claim") or "").lower()
+        for token in VISUAL_SIGNAL_TOKENS:
+            if token in claim_text and token not in terms:
+                terms.append(token)
+    return terms
+
+
+def _envelope_blob(envelope: Dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "assistant_message": envelope.get("assistant_message"),
+            "memory_update": envelope.get("memory_update"),
+        },
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+
+
+def _refinement_erases_supported_visual_evidence(
+    *,
+    refined_envelope: Dict[str, Any],
+    draft_envelope: Dict[str, Any],
+    support_summary: Dict[str, Any],
+) -> bool:
+    terms = _supported_visual_terms(support_summary)
+    if not terms:
+        return False
+    draft_blob = _envelope_blob(draft_envelope)
+    refined_blob = _envelope_blob(refined_envelope)
+    draft_hits = [term for term in terms if term in draft_blob]
+    if not draft_hits:
+        return False
+    refined_hits = [term for term in draft_hits if term in refined_blob]
+    required_hits = 1 if len(draft_hits) <= 2 else 2
+    return len(refined_hits) < required_hits
+
+
+def _preserve_supported_visual_memory(
+    *,
+    refined_memory: Dict[str, Any],
+    draft_memory: Dict[str, Any],
+    support_summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not _supported_visual_terms(support_summary):
+        return refined_memory
+    merged = copy.deepcopy(refined_memory)
+    for key in ["known_image_updates", "visual_intakes", "nonblocking_image_limitations"]:
+        if isinstance(draft_memory.get(key), list) and draft_memory.get(key):
+            merged[key] = copy.deepcopy(draft_memory[key])
+    merged["evidence_present"] = wiki_chat.semantic_evidence_list(
+        _unique_strings(
+            draft_memory.get("evidence_present"),
+            refined_memory.get("evidence_present"),
+            limit=24,
+        ),
+        max_items=12,
+    )
+    return merged
+
+
+def _soften_unresolved_leading_language(text: str) -> str:
+    lowered = str(text or "").lower()
+    if "unresolved" not in lowered and "other" not in lowered:
+        return text
+    replacements = {
+        "is the leading provisional assessment": "is the safest current classification",
+        "is the leading assessment": "is the safest current classification",
+        "is the leading diagnosis": "is the safest current classification",
+    }
+    softened = text
+    for old, new in replacements.items():
+        softened = softened.replace(old, new)
+        softened = softened.replace(old.capitalize(), new.capitalize())
+    return softened
+
+
 def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
     text = user_message.lower()
     data_keywords = [
@@ -95,8 +298,16 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         "metadata",
         "index",
         "review queue",
+        "数据",
+        "数据集",
+        "采集",
+        "导入",
+        "标注",
+        "标签",
+        "审核",
+        "训练数据",
     ]
-    wiki_keywords = ["wiki", "source"]
+    wiki_keywords = ["wiki", "source", "知识库", "来源", "资料", "文献", "参考"]
     grape_keywords = [
         "grape",
         "leaf",
@@ -104,6 +315,13 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         "downy",
         "disease",
         "diagnosis",
+        "葡萄",
+        "叶片",
+        "叶子",
+        "白粉",
+        "霜霉",
+        "病害",
+        "症状",
     ]
 
     wiki_keywords.extend(
@@ -136,7 +354,7 @@ def route_task(user_message: str, image_refs: Sequence[str]) -> Dict[str, Any]:
         task_type = "general_project_chat"
 
     path_by_task = {
-        "data_management": ["router", "data_agent", "chat_agent"],
+        "data_management": ["router", "chat_agent"],
         "visual_intake_or_diagnosis": ["router", "vision_agent", "retrieval_agent", "diagnosis_agent"],
         "knowledge_management": ["router", "retrieval_agent", "wiki_agent"],
         "grape_leaf_chat": ["router", "retrieval_agent", "chat_agent"],
@@ -176,43 +394,182 @@ def core_context_paths_for_route(route: Dict[str, Any], context_label: str) -> L
     return []
 
 
+def expand_query_for_retrieval(query: str) -> str:
+    lower = query.lower()
+    hints: List[str] = []
+    for needles, hint in RETRIEVAL_QUERY_HINTS:
+        if any(needle in lower for needle in needles) and hint not in hints:
+            hints.append(hint)
+    if not hints:
+        return query
+    return f"{query}\nRetrieval hints: {', '.join(hints)}"
+
+
+def query_size_units(query: str) -> int:
+    english_tokens = re.findall(r"[A-Za-z0-9_]+", query)
+    cjk_chars = re.findall(r"[\u3400-\u9fff]", query)
+    cjk_units = max(1, len(cjk_chars) // 2) if cjk_chars else 0
+    return len(english_tokens) + cjk_units
+
+
+def count_complexity_cues(query: str) -> int:
+    lower = query.lower()
+    count = 0
+    for cue in COMPLEXITY_CUES:
+        if re.search(r"[A-Za-z0-9]", cue):
+            pattern = rf"(?<![A-Za-z0-9_]){re.escape(cue)}(?![A-Za-z0-9_])"
+            if re.search(pattern, lower):
+                count += 1
+        elif cue in lower:
+            count += 1
+    return count
+
+
+def infer_auto_selected_page_limit(
+    *,
+    query: str,
+    route: Dict[str, Any] | None,
+    catalog: Dict[str, Any],
+    core_ids: Sequence[str],
+) -> int:
+    page_count = len(catalog.get("pages", []))
+    if page_count <= 0:
+        return 0
+
+    task_type = str((route or {}).get("task_type") or "")
+    limit = AUTO_SELECTED_PAGE_BASE_BY_TASK.get(task_type, 4)
+
+    size_units = query_size_units(query)
+    if size_units >= 18:
+        limit += 1
+    if size_units >= 36:
+        limit += 1
+    if size_units >= 70:
+        limit += 2
+
+    cue_count = count_complexity_cues(query)
+    if cue_count:
+        limit += min(3, cue_count)
+
+    if re.search(r"[?？].*[?？]", query) or re.search(r"[,;；，、]\s*\S+", query):
+        limit += 1
+    if re.search(r"\b(vs|versus|and|or)\b", query.lower()):
+        limit += 1
+
+    # Auto mode keeps mandatory core context from crowding out pages selected
+    # specifically for the current question.
+    if core_ids:
+        extra_slots = 1 if cue_count or size_units >= 12 else 0
+        limit = max(limit, len(core_ids) + extra_slots)
+
+    ceiling = min(page_count, AUTO_SELECTED_PAGE_CEILING)
+    return max(0, min(limit, ceiling))
+
+
+def resolve_selected_page_limit(
+    *,
+    requested_max_selected_files: int | None,
+    query: str,
+    route: Dict[str, Any] | None,
+    catalog: Dict[str, Any],
+    core_ids: Sequence[str],
+) -> tuple[int, str]:
+    page_count = len(catalog.get("pages", []))
+    if requested_max_selected_files is not None:
+        return max(0, min(requested_max_selected_files, page_count)), "manual"
+    return (
+        infer_auto_selected_page_limit(
+            query=query,
+            route=route,
+            catalog=catalog,
+            core_ids=core_ids,
+        ),
+        "auto",
+    )
+
+
+def core_path_candidates(path: str) -> List[str]:
+    candidates = [path]
+    path_obj = Path(path)
+    if path_obj.suffix == ".md" and path_obj.name != "index.md":
+        split_parent = path_obj.with_suffix("") / "index.md"
+        split_text = split_parent.as_posix()
+        if split_text not in candidates:
+            candidates.append(split_text)
+    return candidates
+
+
 def select_pages_for_backend(
     *,
     query: str,
     backend: Any,
     selection_mode: str,
-    max_selected_files: int,
+    max_selected_files: int | None,
     max_page_chars: int,
     wiki_dir: Path,
     catalog_dir: Path,
+    route: Dict[str, Any] | None = None,
     core_paths: Sequence[str] = (),
+    selection_debug: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     catalog = load_or_build_catalog(wiki_dir=wiki_dir, catalog_dir=catalog_dir)
     ids_by_path = {page["path"]: page["id"] for page in catalog.get("pages", [])}
     core_ids = []
     for path in core_paths:
-        page_id = ids_by_path.get(path)
-        if page_id and page_id not in core_ids:
-            core_ids.append(page_id)
+        for candidate in core_path_candidates(path):
+            page_id = ids_by_path.get(candidate)
+            if page_id and page_id not in core_ids:
+                core_ids.append(page_id)
+                break
+
+    selection_query = expand_query_for_retrieval(query)
+    selected_page_limit, selected_page_limit_source = resolve_selected_page_limit(
+        requested_max_selected_files=max_selected_files,
+        query=query,
+        route=route,
+        catalog=catalog,
+        core_ids=core_ids,
+    )
 
     if selection_mode == "none":
+        if selection_debug is not None:
+            selection_debug.update(
+                {
+                    "selected_page_limit": 0,
+                    "selected_page_limit_source": "none",
+                    "catalog_pages": len(catalog.get("pages", [])),
+                    "core_page_count": len(core_ids),
+                    "retrieval_hints_added": selection_query != query,
+                }
+            )
         return []
     elif selection_mode == "full":
+        if selection_debug is not None:
+            selection_debug.update(
+                {
+                    "selected_page_limit": len(catalog.get("pages", [])),
+                    "selected_page_limit_source": "full",
+                    "catalog_pages": len(catalog.get("pages", [])),
+                    "core_page_count": len(core_ids),
+                    "retrieval_hints_added": selection_query != query,
+                }
+            )
         return read_all_pages(catalog=catalog, wiki_dir=wiki_dir, max_page_chars=max_page_chars)
     elif selection_mode == "keyword":
         selected_ids = select_pages_keyword_fallback(
-            query,
+            selection_query,
             catalog=catalog,
-            max_selected_files=max_selected_files,
+            max_selected_files=selected_page_limit,
         )
     elif selection_mode == "model":
         prompt = f"""You are selecting GopherEye context pages for an agent workflow.
 
 Return ONLY a JSON array of page IDs.
-Select at most {max_selected_files} IDs.
+Select the smallest sufficient set for the user request.
+This turn's page budget is {selected_page_limit} IDs. Use fewer when the question is simple.
 
 User/session query:
-{query}
+{selection_query}
 
 Context catalog:
 {render_catalog_for_prompt(catalog)}
@@ -226,16 +583,27 @@ Context catalog:
                 selected_ids.append(item)
         if not selected_ids:
             selected_ids = select_pages_keyword_fallback(
-                query,
+                selection_query,
                 catalog=catalog,
-                max_selected_files=max_selected_files,
+                max_selected_files=selected_page_limit,
             )
     else:
         raise ValueError(f"Unsupported selection_mode: {selection_mode}")
 
     selected_ids = core_ids + [page_id for page_id in selected_ids if page_id not in core_ids]
+    selected_ids = selected_ids[:selected_page_limit]
+    if selection_debug is not None:
+        selection_debug.update(
+            {
+                "selected_page_limit": selected_page_limit,
+                "selected_page_limit_source": selected_page_limit_source,
+                "catalog_pages": len(catalog.get("pages", [])),
+                "core_page_count": len(core_ids),
+                "retrieval_hints_added": selection_query != query,
+            }
+        )
     return read_pages_by_id(
-        selected_ids[:max_selected_files],
+        selected_ids,
         catalog=catalog,
         wiki_dir=wiki_dir,
         max_page_chars=max_page_chars,
@@ -308,7 +676,9 @@ Agent responsibilities:
 - For visual diagnosis, detailed botanical procedure must come from selected wiki pages,
   not from hidden assumptions in this prompt.
 - Diagnosis agent keeps uncertainty visible according to selected wiki procedure pages.
-- Data agent can explain how to collect, ingest, validate, store, audit, and evaluate data.
+- For data-management questions, chat_agent can explain how to collect,
+  ingest, validate, store, audit, and evaluate data. It must not run or mutate
+  the independent GopherEye Data Agent workspace.
 
 Rules:
 - Write assistant_message in English only.
@@ -345,6 +715,16 @@ Rules:
   structure_notes, or feature_notes; app code extracts canonical tags where useful.
 - candidate_labels should be disease names as short strings. candidate_confidence
   must be low, moderate, high, very_high, or unknown.
+- If downy mildew lacks both clear oily/angular upper-surface lesions and
+  visible abaxial cottony/downy sporulation, assign candidate_confidence "low"
+  or omit it. Do not assign moderate confidence to downy mildew based only on
+  generic brown necrotic spots or weak vein association.
+- If powdery mildew lacks visible superficial white-gray powdery colonies or
+  webby mycelium, assign candidate_confidence "low" or omit it.
+- Prefer "safest current classification" over "leading diagnosis" or
+  "leading assessment" when the label is an unresolved/other condition.
+- Do not describe a named disease as leading unless disease-specific signs are
+  visible.
 - next_image_need must be null, close_up_same_surface, opposite_surface,
   adaxial_surface, or abaxial_surface.
 - diagnosis_verdict should be confirmed, possible_not_confirmed, insufficient,
@@ -395,7 +775,7 @@ def run_frontier_turn(
     config_path: str | Path | None = None,
     selection_mode: str = "keyword",
     image_refs: Sequence[str] = (),
-    max_selected_files: int = 6,
+    max_selected_files: int | None = None,
     max_page_chars: int = 12000,
     recent_turns: int = 8,
     max_output_tokens: int = 2400,
@@ -436,17 +816,32 @@ def run_frontier_turn(
 
     route = route_task(user_message, image_refs)
     context = context_for_route(route, wiki_dir=wiki_dir, catalog_dir=catalog_dir)
+    retrieval_decision = decide_retrieval_need(
+        user_message=user_message,
+        route=route,
+        memory=session.get("short_term_memory", wiki_chat.default_memory()),
+        image_refs=image_refs,
+    )
+    effective_selection_mode = selection_mode
+    if retrieval_decision.get("retrieval_decision") == "no_retrieve" and selection_mode != "none":
+        effective_selection_mode = "none"
     selection_query = wiki_chat.build_selection_query(session, user_message)
+    page_selection: Dict[str, Any] = {}
     pages = select_pages_for_backend(
         query=selection_query,
         backend=backend,
-        selection_mode=selection_mode,
+        selection_mode=effective_selection_mode,
         max_selected_files=max_selected_files,
         max_page_chars=max_page_chars,
         wiki_dir=context["root_dir"],
         catalog_dir=context["catalog_dir"],
+        route=route,
         core_paths=core_context_paths_for_route(route, context["label"]),
+        selection_debug=page_selection,
     )
+    page_selection["retrieval_decision"] = retrieval_decision
+    page_selection["requested_selection_mode"] = selection_mode
+    page_selection["effective_selection_mode"] = effective_selection_mode
     requested_image_records = wiki_chat.collect_image_records_for_context(
         session,
         image_refs,
@@ -495,7 +890,139 @@ def run_frontier_turn(
         original_prompt=prompt,
         repair_callback=repair_frontier_envelope,
     )
-    assistant_message = envelope["assistant_message"]
+    draft_envelope = envelope
+    draft_final_raw = envelope["final_raw"]
+    claim_extract_response = None
+    claim_support_response = None
+    refinement_response = None
+    refined_raw = None
+    refined_envelope = None
+    final_refinement_used = False
+    claim_gate_fallback_used = False
+    support_summary: Dict[str, Any] = {
+        "claim_support": [],
+        "overall_support_status": "not_checked",
+        "needs_refinement": False,
+        "needs_human_review": False,
+        "usefulness_score": 3,
+    }
+    if envelope["envelope_valid"]:
+        extracted_claims, claim_extract_response = extract_atomic_claims(
+            backend=backend,
+            user_message=user_message,
+            assistant_message=envelope["assistant_message"],
+            memory_update=envelope["memory_update"],
+            route=route,
+            max_output_tokens=1000,
+        )
+        support_summary, claim_support_response = check_claim_support(
+            backend=backend,
+            claims=extracted_claims,
+            selected_pages=pages,
+            memory=session.get("short_term_memory", wiki_chat.default_memory()),
+            route=route,
+            assistant_message=envelope["assistant_message"],
+            draft_memory_update=envelope["memory_update"],
+            max_output_tokens=max(max_output_tokens, 3600),
+        )
+        if support_summary.get("needs_refinement"):
+            refined_raw, refinement_response = refine_with_claim_support(
+                backend=backend,
+                original_prompt=prompt,
+                draft_envelope={
+                    "assistant_message": envelope["assistant_message"],
+                    "memory_update": envelope["memory_update"],
+                },
+                support_summary=support_summary,
+                max_output_tokens=max(max_output_tokens, 3600),
+            )
+            if refined_raw:
+                refined_envelope = wiki_chat.resolve_assistant_envelope(
+                    refined_raw,
+                    role=wiki_chat.frontier_envelope_role(route["task_type"]),
+                    expected_task_type=route["task_type"],
+                    original_prompt=prompt,
+                    repair_callback=repair_frontier_envelope,
+                )
+                if refined_envelope["envelope_valid"]:
+                    if not _refinement_erases_supported_visual_evidence(
+                        refined_envelope=refined_envelope,
+                        draft_envelope=draft_envelope,
+                        support_summary=support_summary,
+                    ):
+                        refined_memory = _preserve_supported_visual_memory(
+                            refined_memory=refined_envelope["memory_update"],
+                            draft_memory=draft_envelope["memory_update"],
+                            support_summary=support_summary,
+                        )
+                        refined_envelope["memory_update"] = refined_memory
+                        if isinstance(refined_envelope.get("final_parsed"), dict):
+                            refined_envelope["final_parsed"]["memory_update"] = refined_memory
+                            refined_envelope["final_raw"] = json.dumps(
+                                refined_envelope["final_parsed"],
+                                ensure_ascii=False,
+                                indent=2,
+                            )
+                        envelope = refined_envelope
+                        final_refinement_used = True
+        blocking_claims = [
+            item for item in support_summary.get("claim_support", [])
+            if item.get("risk_level") == "high"
+            and (
+                (
+                    item.get("support_status") in {"no_support", "not_checked"}
+                    and item.get("recommended_action") in {"remove", "ask_followup", "human_review"}
+                )
+                or (
+                    item.get("support_status") == "partially_supported"
+                    and item.get("recommended_action") == "hedge"
+                )
+            )
+        ]
+        if support_summary.get("needs_refinement") and not final_refinement_used and blocking_claims:
+            fallback_memory = dict(envelope["memory_update"])
+            missing = list(fallback_memory.get("evidence_missing") or [])
+            for item in blocking_claims[:3]:
+                missing.append(f"Unsupported high-risk claim: {item.get('claim')}")
+            fallback_memory["evidence_missing"] = missing[:8]
+            open_questions = list(fallback_memory.get("open_questions") or [])
+            open_questions.append("A high-risk claim needs stronger support before it can be stated.")
+            fallback_memory["open_questions"] = open_questions[:8]
+            fallback_raw = json.dumps(
+                {
+                    "assistant_message": (
+                        "I do not have enough supported evidence to state that confidently. "
+                        "I would need stronger source or image evidence before making the high-risk claim."
+                    ),
+                    "memory_update": fallback_memory,
+                },
+                ensure_ascii=False,
+            )
+            fallback_envelope = wiki_chat.resolve_assistant_envelope(
+                fallback_raw,
+                role=wiki_chat.frontier_envelope_role(route["task_type"]),
+                expected_task_type=route["task_type"],
+                original_prompt=prompt,
+                repair_callback=None,
+            )
+            if fallback_envelope["envelope_valid"]:
+                envelope = fallback_envelope
+                claim_gate_fallback_used = True
+
+    retrieval_quality = "not_applicable"
+    if retrieval_decision.get("retrieval_decision") == "retrieve":
+        retrieval_quality = "good" if pages else "empty"
+    reflection_record = build_reflection_record(
+        retrieval_decision=retrieval_decision,
+        retrieval_quality=retrieval_quality,
+        support_summary=support_summary,
+    )
+    assistant_message = _soften_unresolved_leading_language(envelope["assistant_message"])
+    if assistant_message != envelope["assistant_message"]:
+        envelope["assistant_message"] = assistant_message
+        if isinstance(envelope.get("final_parsed"), dict):
+            envelope["final_parsed"]["assistant_message"] = assistant_message
+            envelope["final_raw"] = json.dumps(envelope["final_parsed"], ensure_ascii=False, indent=2)
     previous_memory = session.get("short_term_memory", wiki_chat.default_memory())
     memory_update = envelope["memory_update"]
     if not envelope["envelope_valid"]:
@@ -528,7 +1055,9 @@ def run_frontier_turn(
         "model_profile": profile.name,
         "route": route,
         "context_label": context["label"],
-        "selection_mode": selection_mode,
+        "selection_mode": effective_selection_mode,
+        "requested_selection_mode": selection_mode,
+        "page_selection": page_selection,
         "image_context": image_context,
         "max_attached_images": max_attached_images,
         "requested_image_records": requested_image_records,
@@ -540,22 +1069,36 @@ def run_frontier_turn(
             for page in pages
         ],
         "raw_model_output": raw,
+        "draft_model_output": raw,
+        "draft_final_model_output": draft_final_raw,
         "repair_model_output": envelope["attempts"][1]["raw"] if len(envelope["attempts"]) > 1 else None,
+        "refined_model_output": refined_raw,
         "final_model_output": envelope["final_raw"],
+        "draft_envelope_valid": draft_envelope["envelope_valid"],
         "parsed_json": envelope["parsed_json"],
         "envelope_valid": envelope["envelope_valid"],
         "envelope_schema": envelope["schema_profile"],
         "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
+        "final_refinement_used": final_refinement_used,
+        "claim_gate_fallback_used": claim_gate_fallback_used,
+        "claim_support": support_summary.get("claim_support", []),
+        "reflection": reflection_record,
         "envelope_attempts": [
             {key: value for key, value in attempt.items() if key != "raw"}
             for attempt in envelope["attempts"]
         ],
         "usage": model_response.usage,
         "repair_usage": repair_responses[0].usage if repair_responses else None,
+        "claim_extract_usage": getattr(claim_extract_response, "usage", None) if claim_extract_response else None,
+        "claim_support_usage": getattr(claim_support_response, "usage", None) if claim_support_response else None,
+        "refinement_usage": getattr(refinement_response, "usage", None) if refinement_response else None,
         "backend_meta": model_response.backend_meta,
         "repair_backend_meta": repair_responses[0].backend_meta if repair_responses else None,
+        "claim_extract_backend_meta": getattr(claim_extract_response, "backend_meta", None) if claim_extract_response else None,
+        "claim_support_backend_meta": getattr(claim_support_response, "backend_meta", None) if claim_support_response else None,
+        "refinement_backend_meta": getattr(refinement_response, "backend_meta", None) if refinement_response else None,
         "created_at": now_utc(),
     }
     session.setdefault("turns", []).append(turn_meta)
@@ -569,6 +1112,7 @@ def run_frontier_turn(
         "model_profile": profile.name,
         "route": route,
         "context_label": context["label"],
+        "page_selection": page_selection,
         "assistant_message": assistant_message,
         "short_term_memory": session["short_term_memory"],
         "selected_pages": turn_meta["selected_pages"],
@@ -581,5 +1125,9 @@ def run_frontier_turn(
         "envelope_role_profile": envelope["role_profile"],
         "envelope_validation_errors": envelope["validation_errors"],
         "envelope_fallback_used": envelope["fallback_used"],
+        "claim_support": support_summary.get("claim_support", []),
+        "reflection": reflection_record,
+        "final_refinement_used": final_refinement_used,
+        "claim_gate_fallback_used": claim_gate_fallback_used,
         "usage": model_response.usage,
     }

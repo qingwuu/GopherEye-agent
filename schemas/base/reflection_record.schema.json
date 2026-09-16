@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gophereye.local/schemas/base/reflection_record.schema.json",
+  "title": "Reflection Record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "retrieval_decision",
+    "retrieval_reason",
+    "retrieval_quality",
+    "claim_support",
+    "usefulness_score",
+    "needs_human_review"
+  ],
+  "properties": {
+    "retrieval_decision": {
+      "type": "string",
+      "enum": ["retrieve", "no_retrieve"]
+    },
+    "retrieval_reason": {
+      "type": "string"
+    },
+    "retrieval_quality": {
+      "type": "string",
+      "enum": ["good", "weak", "empty", "not_applicable"]
+    },
+    "claim_support": {
+      "type": "array",
+      "items": {
+        "$ref": "claim_support.schema.json"
+      }
+    },
+    "usefulness_score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "needs_human_review": {
+      "type": "boolean"
+    }
+  }
+}

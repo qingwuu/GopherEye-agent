@@ -99,8 +99,8 @@ schemas/base/memory_update.schema.json
   session memory payload, including optional evidence_sufficiency,
   single_surface_assessment, and nonblocking_image_limitations.
 
-schemas/data_agent/*.schema.json
-  deterministic data pipeline records, human review, and reviewed dataset index.
+gophereye_data_agent/schemas.py
+  independent GopherEye Data Agent operation plans and executor result models.
 ```
 
 This prevents the assistant envelope from becoming a duplicate diagnosis schema.
